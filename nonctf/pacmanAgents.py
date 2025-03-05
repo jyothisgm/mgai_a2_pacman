@@ -16,7 +16,7 @@ from pacman import Directions
 from game import Agent
 import random
 import game
-import util
+import MG.A2.mgai_a2_pacman.util as util
 
 class LeftTurnAgent(game.Agent):
     "An agent that turns left at every opportunity"

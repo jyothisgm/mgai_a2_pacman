@@ -22,7 +22,7 @@
 
 from captureAgents import CaptureAgent
 import distanceCalculator
-import random, time, util, sys
+import random, time, util as util, sys
 from game import Directions
 import game
 from util import nearestPoint
@@ -87,6 +87,7 @@ class ReflexCaptureAgent(CaptureAgent):
         if dist < bestDist:
           bestAction = action
           bestDist = dist
+      # action that gets home fastest
       return bestAction
 
     return random.choice(bestActions)
