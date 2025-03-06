@@ -287,10 +287,8 @@ class OffensiveReflexAgent(DummyAgent):
         return self.evaluate(ss ,Directions.STOP)
 
     def heuristicEvaluation(self, gameState, action):
-
         features = self.evaluateAttackParameters(gameState, action)
         weights = self.getCostOfAttackParameter(gameState, action)
-        
         score = 0
         score += features['successorScore'] * weights['successorScore']
         score += features['offence'] * weights['offence']
@@ -302,7 +300,6 @@ class OffensiveReflexAgent(DummyAgent):
         # Border protection
         if self.isNearBorder(gameState, action):
             score -= 50 
-        
         return score
 
     def isNearBorder(self, gameState, action):
@@ -460,9 +457,11 @@ class OffensiveReflexAgent(DummyAgent):
                 action_scores = []
                 for action in legal_actions:
                     score = self.heuristicEvaluation(gameState, action)
+                    if score is None:  
+                        score = -9999
                     action_scores.append(score)
-                
                 # Select the highest scoring action
+                print(action_scores)
                 best_score = max(action_scores)
                 best_actions = [a for a, s in zip(legal_actions, action_scores) if s == best_score]
                 best_action = random.choice(best_actions)
