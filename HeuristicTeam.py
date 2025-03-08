@@ -83,6 +83,7 @@ class DummyAgent(CaptureAgent):
     """
     Picks among actions randomly.
     """
+    
     actions = gameState.getLegalActions(self.index)
     # You should change this in your own agent.
     return random.choice(actions)
@@ -193,10 +194,11 @@ class OffensiveReflexAgent(DummyAgent):
         position = successor.getAgentState(self.index).getPosition()
         # List of remaining food
         foodList = self.getFood(successor).asList()
+       
         # New score after performing the action
         features['successorScore'] = self.getScore(successor)
         
-        # Check if the agent is still in attack mode
+        # Check if the agent is still in offence mode
         if successor.getAgentState(self.index).isPacman:
             features['offence'] = 1
         else:
@@ -212,6 +214,7 @@ class OffensiveReflexAgent(DummyAgent):
         # List of opponent agent indexes
         opponentsList = self.getOpponents(successor)
 
+        # store Distance to all enemy ghosts
         for i in range(len(opponentsList)):
             enemyPos = opponentsList[i]
             enemy = successor.getAgentState(enemyPos)
@@ -222,7 +225,10 @@ class OffensiveReflexAgent(DummyAgent):
         if len(disToGhost) > 0:
             # Distance to the nearest ghost
             minDisToGhost = min(disToGhost)
+            # very close
             if minDisToGhost < 5:
+                # set more weight to avoid ghost
+                # if successorScore is high, the value can be big to adventure
                 features['distanceToGhost'] = minDisToGhost + features['successorScore']
             else:
                 features['distanceToGhost'] = 0
@@ -262,29 +268,6 @@ class OffensiveReflexAgent(DummyAgent):
     def getOpponentPositions(self, gameState):
         return [gameState.getAgentPosition(enemy) for enemy in self.getOpponents(gameState)]
 
-    # **** action ****
-    def bestPossibleAction(self ,mcsc):
-        ab = mcsc.getLegalActions(self.index)
-        # avoid stagnate
-        ab.remove(Directions.STOP)
-
-        if len(ab) == 1:
-            # only one action available
-            return ab[0]
-        else:
-            reverseDir = Directions.REVERSE[mcsc.getAgentState(self.index).configuration.direction]
-            # not moving reversely
-            if reverseDir in ab:
-                ab.remove(reverseDir)
-            return random.choice(ab)
-
-    # ********* modify
-    def monteCarloSimulation(self ,gameState ,depth):
-        ss = gameState.deepCopy()
-        while depth > 0:
-            ss = ss.generateSuccessor(self.index ,self.bestPossibleAction(ss))
-            depth -= 1
-        return self.evaluate(ss ,Directions.STOP)
 
     def heuristicEvaluation(self, gameState, action):
         features = self.evaluateAttackParameters(gameState, action)
@@ -295,7 +278,7 @@ class OffensiveReflexAgent(DummyAgent):
         if 'foodDistance' in features:
             score += features['foodDistance'] * abs(weights['foodDistance'])
         if 'distanceToGhost' in features:
-            score -= features['distanceToGhost'] * weights['distancesToGhost']  # 距离幽灵越远越好
+            score -= features['distanceToGhost'] * weights['distancesToGhost']  
         
         # Border protection
         if self.isNearBorder(gameState, action):
@@ -357,16 +340,14 @@ class OffensiveReflexAgent(DummyAgent):
                 self.shouldReturn = True
             self.lastFood = self.presentFoodList
             self.prevCapsuleLeft = self.capsuleLeft
-
            
             if not gameState.getAgentState(self.index).isPacman:
                 self.shouldReturn = False
 
+
             # checks the attack situation           
             remainingFoodList = self.getFood(gameState).asList()
             remainingFoodSize = len(remainingFoodList)
-    
-        
             if remainingFoodSize == self.currentFoodSize:
                 self.counter = self.counter + 1
             else:
@@ -389,13 +370,7 @@ class OffensiveReflexAgent(DummyAgent):
             invaders = [a for a in enemies if not a.isPacman and a.getPosition() != None and a.scaredTimer == 0]
             if len(invaders) > 0:
                 distanceToEnemy = min([self.getMazeDistance(self.presentCoordinates, a.getPosition()) for a in invaders])
-            
-            '''
-            Capsule eating:
-            -> If there is capsule available then capsulePower is True.
-            -> If enemy Distance is less than 5 then capsulePower is False.
-            -> If pacman scored a food then return to home capsulePower is False.
-            '''
+
             if self.capsuleLeft < realLastCapsuleLen:
                 self.capsulePower = True
                 self.eatenFood = 0
@@ -404,7 +379,7 @@ class OffensiveReflexAgent(DummyAgent):
             if (len(self.presentFoodList) < len (self.lastFood)):
                 self.capsulePower = False
 
-        
+            # ********************************
             if self.capsulePower:
                 if not gameState.getAgentState(self.index).isPacman:
                     self.eatenFood = 0
@@ -416,7 +391,6 @@ class OffensiveReflexAgent(DummyAgent):
 
                 if len(self.presentFoodList )==0 or self.eatenFood >= 5:
                     self.targetMode = self.initPosition
-        
                 else:
                     for food in self.presentFoodList:
                         distance = self.getMazeDistance(self.presentCoordinates ,food)
@@ -440,52 +414,70 @@ class OffensiveReflexAgent(DummyAgent):
                 minDis = min(distanceToTarget)
                 bestActions = [a for a, dis in zip(possibleActions, distanceToTarget) if dis== minDis]
                 bestAction = random.choice(bestActions)
-                return bestAction
-            # ********* heuristic
+                return bestAction        
+            
             else:
-
-                # Get all legal actions (STOP and reverse are filtered)
+                # Basic defense logic
+                self.eatenFood = 0
+                
+                # Step 1: Get and validate legal actions
                 legal_actions = gameState.getLegalActions(self.index)
-                if Directions.STOP in legal_actions:
-                    legal_actions.remove(Directions.STOP)
-                current_direction = gameState.getAgentState(self.index).configuration.direction
-                reverse_action = Directions.REVERSE.get(current_direction, None)
                 
-                if reverse_action in legal_actions:
-                    legal_actions.remove(reverse_action)
+                # Must include at least one legal action
+                if not legal_actions:
+                    return Directions.STOP  # Last line of defense
                 
+                # Step 2: Smartly filter actions
+                current_dir = gameState.getAgentState(self.index).configuration.direction
+                reverse_action = Directions.REVERSE.get(current_dir, None)
+                
+                # Prioritize filtering STOP and reverse actions (when there are other choices)
+                filtered_actions = [
+                    a for a in legal_actions 
+                    if a != Directions.STOP and (len(legal_actions) <= 1 or a != reverse_action)
+                ]
+                
+                # Safety mechanism: If no actions left after filtering, fallback to the original list
+                safe_actions = filtered_actions or legal_actions
+                
+                # Step 3: Action scoring (simplified version)
                 action_scores = []
-                for action in legal_actions:
-                    score = self.heuristicEvaluation(gameState, action)
-                    if score is None:  
-                        score = -9999
-                    action_scores.append(score)
-                # Select the highest scoring action
-                print(action_scores)
-                best_score = max(action_scores)
-                best_actions = [a for a, s in zip(legal_actions, action_scores) if s == best_score]
-                best_action = random.choice(best_actions)
+                for action in safe_actions:
+                    try:
+                        next_state = gameState.generateSuccessor(self.index, action)
+                        score = self.getMazeDistance(next_state.getAgentPosition(self.index),
+                            self.getPatrolPoint(gameState))  # Assume there is a method to get patrol points
+                        action_scores.append(score)
+                    except:
+                        action_scores.append(-9999)  # Illegal actions automatically get the lowest score
                 
-                return best_action
+                # Step 4: Safe selection
+                min_score = min(action_scores)
+                best_actions = [a for a, s in zip(safe_actions, action_scores) if s == min_score]
+                
+                # Final legality check
+                current_legal = gameState.getLegalActions(self.index)
+                valid_actions = [a for a in best_actions if a in current_legal]
+                
+                return random.choice(valid_actions) if valid_actions else random.choice(current_legal)
+
+
 
 
 class DefensiveReflexAgent(DummyAgent):
     def __init__(self, index):
         CaptureAgent.__init__(self, index)
-        # Current defensive target (could be an invader's position or food).
         self.target = None
-        # Previous round's food list (used to detect stolen food).
         self.previousFood = []
         self.counter = 0
+        self.patrolPoints = []
 
     def registerInitialState(self, gameState):
         CaptureAgent.registerInitialState(self, gameState)
         self.setPatrolPoint(gameState)
 
     def setPatrolPoint(self, gameState):
-        '''
-        Look for the center of the maze to patrol.
-        '''
+        '''Dynamic patrol point selection based on the center of the maze.'''
         x = (gameState.data.layout.width - 2) // 2
         if not self.red:
             x += 1
@@ -495,108 +487,79 @@ class DefensiveReflexAgent(DummyAgent):
             if not gameState.hasWall(x, i):
                 self.patrolPoints.append((x, i))
 
-        for i in range(len(self.patrolPoints)):
-            # If there are too many patrol points, remove the first and last ones to keep the middle ones
-            if len(self.patrolPoints) > 2:
-                self.patrolPoints.remove(self.patrolPoints[0])
-                self.patrolPoints.remove(self.patrolPoints[-1])
-            else:
-                break
-    
+        # Keep middle patrol points
+        if len(self.patrolPoints) > 2:
+            self.patrolPoints = self.patrolPoints[1:-1]
 
-    def getNextDefensiveMove(self, gameState):
-        agentActions = []
-        actions = gameState.getLegalActions(self.index)
+    def heuristicEvaluation(self, gameState, action):
+        successor = gameState.generateSuccessor(self.index, action)
+        myPos = successor.getAgentPosition(self.index)
+        features = util.Counter()
         
-        rev_dir = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
-        actions.remove(Directions.STOP)
-        # Remove "STOP" action and "reverse" direction
-        for i in range(0, len(actions)-1):
-            if rev_dir == actions[i]:
-                actions.remove(rev_dir)
+        # Defensive state check
+        myState = successor.getAgentState(self.index)
+        features['onDefense'] = 1 if not myState.isPacman else 0
 
-        # Filter out actions that would turn the agent into a Pacman (eating beans)
-        for i in range(len(actions)):
-            a = actions[i]
-            new_state = gameState.generateSuccessor(self.index, a)
-            if not new_state.getAgentState(self.index).isPacman:
-                agentActions.append(a)
+        # Calculate distance to visible invaders
+        enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)]
+        invaders = [a for a in enemies if a.isPacman and a.getPosition() is not None]
+        features['numInvaders'] = len(invaders)
+        if invaders:
+            dists = [self.getMazeDistance(myPos, a.getPosition()) for a in invaders]
+            features['invaderDistance'] = min(dists)
 
-        # If the agent has been defending for 4 consecutive rounds, add reverse direction to change its movement
-        if len(agentActions) == 0:
-            self.counter = 0
-        else:
-            self.counter = self.counter + 1
-        if self.counter > 4 or self.counter == 0:
-            agentActions.append(rev_dir)
+        # Penalize stopping or reversing
+        if action == Directions.STOP:
+            features['stop'] = 1
+        rev = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
+        if action == rev:
+            features['reverse'] = 1
 
-        return agentActions
+        # Move towards target if no invaders are detected
+        if not invaders and self.target:
+            features['targetDistance'] = self.getMazeDistance(myPos, self.target)
+
+        weights = {
+            'numInvaders': -1000, 
+            'onDefense': 100, 
+            'invaderDistance': -10, 
+            'stop': -100, 
+            'reverse': -2, 
+            'targetDistance': -1
+        }
+        return features * weights
 
     def chooseAction(self, gameState):
-        
         position = gameState.getAgentPosition(self.index)
-        # If the agent reaches the target, clear the target and look for a new defensive task
+        
+        # Reset target if we have reached it
         if position == self.target:
             self.target = None
-        invaders = []
-        nearestInvader = []
-        minDistance = float("inf")
 
-        # Look for enemy positions in our home
-        opponentsPositions = self.getOpponents(gameState)
-        i = 0
-        while i != len(opponentsPositions):
-            opponentPos = opponentsPositions[i]
-            opponent = gameState.getAgentState(opponentPos)
-            if opponent.isPacman and opponent.getPosition() is not None:
-                opponentPos = opponent.getPosition()
-                invaders.append(opponentPos)
-            i = i + 1
-
-        # Find the closest enemy Pacman and set it as the target
-        if len(invaders) > 0:
-            for oppPosition in invaders:
-                dist = self.getMazeDistance(oppPosition, position)
-                if dist < minDistance:
-                    minDistance = dist
-                    nearestInvader.append(oppPosition)
-            self.target = nearestInvader[-1]
-
-        # If no invaders are found, check if any food has been stolen: if the food count has decreased, it means food was stolen, and the agent should go to the stolen food location.
+        # Detect invaders
+        invaders = [gameState.getAgentState(i).getPosition() for i in self.getOpponents(gameState) 
+                    if gameState.getAgentState(i).isPacman and gameState.getAgentState(i).getPosition() is not None]
+        
+        if invaders:
+            # Prioritize invaders closer to the food or important areas
+            self.target = min(invaders, key=lambda x: self.getMazeDistance(position, x))
         else:
-            if len(self.previousFood) > 0:
-                if len(self.getFoodYouAreDefending(gameState).asList()) < len(self.previousFood):
-                    stolenFood = set(self.previousFood) - set(self.getFoodYouAreDefending(gameState).asList())
+            # Handle stolen food
+            if self.previousFood and len(self.getFoodYouAreDefending(gameState).asList()) < len(self.previousFood):
+                stolenFood = set(self.previousFood) - set(self.getFoodYouAreDefending(gameState).asList())
+                if stolenFood:
                     self.target = stolenFood.pop()
 
+        # Update previous food state
         self.previousFood = self.getFoodYouAreDefending(gameState).asList()
-        
+
+        # If no invader or stolen food, patrol
         if self.target is None:
-            # If the number of food ≤ 4, prioritize defending remaining food and capsules
-            if len(self.getFoodYouAreDefending(gameState).asList()) <= 4:
-                highPriorityFood = self.getFoodYouAreDefending(gameState).asList() + self.getCapsulesYouAreDefending(gameState)
-                self.target = random.choice(highPriorityFood)
-            else:
-                self.target = random.choice(self.patrolPoints)
+            self.target = random.choice(self.patrolPoints)
 
-        # Get possible defensive moves
-        candAct = self.getNextDefensiveMove(gameState)
-        awsomeMoves = []
-        fvalues = []
+        actions = gameState.getLegalActions(self.index)
+        actions.remove(Directions.STOP) if Directions.STOP in actions else None
 
-        i = 0
-        # Find the best move       
-        while i < len(candAct):
-            a = candAct[i]
-            nextState = gameState.generateSuccessor(self.index, a)
-            newpos = nextState.getAgentPosition(self.index)
-            awsomeMoves.append(a)
-            fvalues.append(self.getMazeDistance(newpos, self.target))
-            i = i + 1
-
-        best = min(fvalues)
-        bestActions = [a for a, v in zip(awsomeMoves, fvalues) if v == best]
-        bestAction = random.choice(bestActions)
+        # Select the best action based on the heuristic
+        bestAction = max(actions, key=lambda a: self.heuristicEvaluation(gameState, a))
         return bestAction
-
-
