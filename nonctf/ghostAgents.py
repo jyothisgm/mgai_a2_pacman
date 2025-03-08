@@ -16,8 +16,8 @@ from game import Agent
 from game import Actions
 from game import Directions
 import random
-from MG.A2.mgai_a2_pacman.util import manhattanDistance
-import MG.A2.mgai_a2_pacman.util as util
+from util import manhattanDistance
+import util
 
 class GhostAgent( Agent ):
     def __init__( self, index ):

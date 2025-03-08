@@ -87,7 +87,6 @@ class ReflexCaptureAgent(CaptureAgent):
         if dist < bestDist:
           bestAction = action
           bestDist = dist
-      # action that gets home fastest
       return bestAction
 
     return random.choice(bestActions)

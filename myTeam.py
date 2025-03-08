@@ -13,10 +13,9 @@
 
 
 from captureAgents import CaptureAgent
-import random, time, util as util
+import random, time, util
 from game import Directions
 import game
-from util import nearestPoint
 
 #################
 # Team creation #
@@ -92,7 +91,7 @@ class DummyAgent(CaptureAgent):
         successor = gameState.generateSuccessor(self.index, action)
         # Position of the new state
         pos = successor.getAgentState(self.index).getPosition()
-        if pos != nearestPoint(pos):
+        if pos != util.nearestPoint(pos):
             # If the position is not the nearest grid point, move one more step forward
             return successor.generateSuccessor(self.index, action)
         else:

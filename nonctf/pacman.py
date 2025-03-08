@@ -43,9 +43,9 @@ from game import GameStateData
 from game import Game
 from game import Directions
 from game import Actions
-from MG.A2.mgai_a2_pacman.util import nearestPoint
-from MG.A2.mgai_a2_pacman.util import manhattanDistance
-import MG.A2.mgai_a2_pacman.util as util, layout
+from util import nearestPoint
+from util import manhattanDistance
+import util, layout
 import sys, types, time, random, os
 
 ###################################################
