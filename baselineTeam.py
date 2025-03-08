@@ -22,7 +22,7 @@
 
 from captureAgents import CaptureAgent
 import distanceCalculator
-import random, time, util as util, sys
+import random, time, util, sys
 from game import Directions
 import game
 from util import nearestPoint
