@@ -15,7 +15,7 @@
 from captureAgents import CaptureAgent
 import random, util as util
 from game import Directions
-import game
+import math
 from util import nearestPoint
 
 #################
@@ -101,7 +101,7 @@ class DummyAgent(CaptureAgent):
 
   def evaluate(self, gameState, action): 
         features = self.evaluateAttackParameters(gameState, action)
-        weights = self.getCostOfAttackParameter(gameState, action)
+        weights = self.getCostOfAttackParameter(gameState, action)  
         return features * weights
  
   def evaluateAttackParameters(self, gameState, action):
@@ -125,123 +125,156 @@ class OffensiveReflexAgent(DummyAgent):
         self.presentCoordinates = (-5, -5)
         # Initial target position
         self.initialTarget = []
-
+        self.stepsWithoutFood = 0
 
     
     def evaluateAttackParameters(self, gameState, action):
         """
-        Evaluates the given action for offensive strategy by considering multiple factors.
+        Compute attack strategy features for weighted evaluation in evaluate().
         """
         features = util.Counter()
         successor = self.getSuccessor(gameState, action)
         position = successor.getAgentState(self.index).getPosition()
         previousGameState = self.getPreviousObservation()
-
+        
         features['successorScore'] = self.getScore(successor)
         features['offence'] = 1 if successor.getAgentState(self.index).isPacman else 0
         
-        # Compute food-related features
-        features['foodDistance'] = self.getNearestFoodDistance(successor, position)
-        features['capsuleDistance'] = self.getNearestCapsuleDistance(successor, position)
-        features['RetreatScore'] = self.getRetreatScore(successor, position)
-
-        # Compute ghost-related features
-        features['distanceToGhost'] = self.getGhostThreat(successor, position, features['successorScore'])
         
+        
+        # # food number
+        # features['foodNum'] = len(self.getFood(successor).asList())
+
+        # # Compute features related to food
+        # features['foodDistance'] = self.getNearestFoodDistance(successor, position)
+
+        # Compute features related to retreat
+        features['RetreatScore'] = self.getRetreatScore(successor, position)
+        foodList = self.getFood(successor).asList()
+        localFoodCount = sum(1 for food in foodList if self.getMazeDistance(position, food) <= 10)  # Count food in 5-step range
+        nearestFoodDistance = self.getNearestFoodDistance(successor, position)
+    
+        # Compute food score: balance food density and nearest food distance
+        features['foodScore'] = nearestFoodDistance
+
+        # Compute features related to ghosts
+        features['distanceToGhost'] = self.getGhostThreat(successor, position, features['successorScore'])
+
+        # Number of nearby ghosts
+        features['numNearbyGhosts'] = self.getNearbyGhostCount(successor, position, radius=3)
+
+        # Distance to nearest power capsule
+        features['capsuleDistance'] = self.getNearestCapsuleDistance(successor, position)
+        # features['pathDiversion'] = self.getPathDiversion(gameState)
+        # Food consumption efficiency
+        if previousGameState:
+            prevFood = len(self.getFood(previousGameState).asList())
+            features['foodEaten'] = prevFood - features['foodNum']  # Food reduction count, incentivizes eating food
+        if action == Directions.STOP:
+            features['stopPenalty'] = 100  # Penalize stopping
+        
+        currentDirection = gameState.getAgentState(self.index).configuration.direction
+        reverseDirection = Directions.REVERSE[currentDirection]
+        if successor.getAgentState(self.index).numCarrying > 0:
+            features['foodScore'] *= 0.1
+        if action == reverseDirection:
+            features['reversePenalty'] = 100
+        
+        if not hasattr(self, 'recentPositions'):
+            self.recentPositions = []
+        
+        self.recentPositions.append(position)
+
+        if len(self.recentPositions) > 4:
+            self.recentPositions.pop(0) 
+
+        if len(self.recentPositions) == 4:
+            A, B, C, D = self.recentPositions
+            # Check for clockwise cycle (A → B → C → D → A) or counterclockwise cycle (A → D → C → B → A)
+            if (A == C and B == D) or (A == D and B == C):
+                features['cyclePenalty'] = 100
         return features
+    
+    def getPathDiversion(self, gameState):
+        """
+        Determines if there is an alternative, safer path available.
+        Returns 1 if an alternative path exists, otherwise 0.
+        """
+        ghostPositions = [
+            gameState.getAgentState(enemy).getPosition()
+            for enemy in self.getOpponents(gameState)
+            if not gameState.getAgentState(enemy).isPacman and gameState.getAgentState(enemy).getPosition() is not None
+        ]
+
+        if not ghostPositions:
+            return 0  # No need to divert if there are no ghosts
+
+        legalActions = gameState.getLegalActions(self.index)
+        safePaths = [
+            action for action in legalActions
+            if min(self.getMazeDistance(self.getSuccessor(gameState, action).getAgentPosition(self.index), ghost)
+                for ghost in ghostPositions) > 3
+        ]
+
+        return 1 if safePaths else 0
     
     def getNearestCapsuleDistance(self, successor, position):
         """Returns the distance to the nearest power capsule, if available."""
         capsuleList = self.getCapsules(successor)
         return min([self.getMazeDistance(position, cap) for cap in capsuleList]) if capsuleList else float('inf')
     
-    def getRetreatScore(self, successor, position):
+    def getNearbyGhostCount(self, successor, position, radius=3):
         """
-        Computes a retreat score to determine whether the agent should prioritize retreating.
-        Higher values indicate a greater need to retreat.
+        Compute the number of ghosts within the given `radius`.
         """
-        # Determine the team's boundary position
-        mapWidth = successor.data.layout.width
-        borderX = (mapWidth // 2) - 1 if self.red else (mapWidth // 2)
-        borderPositions = [(borderX, y) for y in range(successor.data.layout.height) if not successor.hasWall(borderX, y)]
-        
-        # Distance to the closest border point
-        borderDistance = min(self.getMazeDistance(position, border) for border in borderPositions)
-
-        # Get enemy ghost positions
         ghostPositions = [
             successor.getAgentState(enemy).getPosition()
             for enemy in self.getOpponents(successor)
             if not successor.getAgentState(enemy).isPacman and successor.getAgentState(enemy).getPosition() is not None
         ]
 
-        # Calculate the minimum ghost distance
+        return sum(1 for ghostPos in ghostPositions if self.getMazeDistance(position, ghostPos) <= radius)
+    
+    def getRetreatScore(self, successor, position):
+        """
+        Computes a retreat score to ensure the agent prioritizes returning directly to its own half.
+        Higher values indicate a greater need to retreat.
+        """
+        # 确定己方半场的边界
+        mapWidth = successor.data.layout.width
+        borderX = (mapWidth // 2) - 1 if self.red else (mapWidth // 2)
+        borderPositions = [(borderX, y) for y in range(successor.data.layout.height) if not successor.hasWall(borderX, y)]
+        
+        # 计算到边界的最短路径
+        borderDistance = min(self.getMazeDistance(position, border) for border in borderPositions)
+
+        # 计算鬼魂的最近距离
+        ghostPositions = [
+            successor.getAgentState(enemy).getPosition()
+            for enemy in self.getOpponents(successor)
+            if not successor.getAgentState(enemy).isPacman and successor.getAgentState(enemy).getPosition() is not None
+        ]
         minGhostDistance = min((self.getMazeDistance(position, ghost) for ghost in ghostPositions), default=float('inf'))
-
-        # Encourage retreat if ghosts are near (动态威胁计算)
-        ghostThreatFactor = 10 if minGhostDistance <= 2 else (5 if minGhostDistance <= 5 else 0)
-
-        # 考虑食物携带量，指数级增长
+        
+        # 计算撤退紧迫性（边界距离、鬼魂威胁、携带食物）
+        ghostThreatFactor = 20 / (minGhostDistance + 1)  
         carriedFood = successor.getAgentState(self.index).numCarrying
-        foodWeight = carriedFood * 1
+        foodWeight = carriedFood ** 1.5  
 
-        # 计算最终回家分数（分数越高，回家意愿越强）
-        retreatScore = (5 / (borderDistance + 1)) + ghostThreatFactor + foodWeight  
+        # **核心修改点：100 / (borderDistance + 1) 让 Pacman 立刻回家**
+        retreatScore = (100 / (borderDistance + 1)) + ghostThreatFactor + foodWeight  
 
         return retreatScore
     
     def getNearestFoodDistance(self, successor, position):
         """
-        Calculates the best food distance considering multiple factors:
-        - Food proximity
-        - Ghost threat
-        - Nearby food clusters (to encourage efficient eating)
-        - Distance to retreat (border)
+        Compute the maze distance from the current position to the nearest food, without considering ghost influence.
         """
         foodList = self.getFood(successor).asList()
         if not foodList:
-            return 0  # No food available
+            return 0  # return 0
 
-        # Get enemy ghost positions
-        ghostPositions = [
-            successor.getAgentState(enemy).getPosition()
-            for enemy in self.getOpponents(successor)
-            if not successor.getAgentState(enemy).isPacman and successor.getAgentState(enemy).getPosition() is not None
-        ]
-
-        # Determine the team's boundary position
-        mapWidth = successor.data.layout.width
-        borderX = (mapWidth // 2) - 1 if self.red else (mapWidth // 2)
-        borderPositions = [(borderX, y) for y in range(successor.data.layout.height) if not successor.hasWall(borderX, y)]
-
-        # Evaluate all food positions and select the best one
-        bestScore = float('inf')
-        for food in foodList:
-            foodDistance = self.getMazeDistance(position, food)
-            borderDistance = self.getMazeDistance(position, food) + min(self.getMazeDistance(food, border) for border in borderPositions)
-
-            # Count nearby food items within a 2-tile radius
-            nearbyFoodCount = sum(1 for other in foodList if self.getMazeDistance(food, other) <= 2)
-
-            # Compute ghost threat dynamically
-            ghostThreatLevel = min((self.getMazeDistance(food, ghost) for ghost in ghostPositions), default=float('inf'))
-            ghostPenalty = 50 / (ghostThreatLevel + 1)  # 动态计算鬼的影响，避免固定惩罚
-
-            # 如果已经在敌方半场，不考虑食物密集度
-            if self.isInEnemyTerritory(successor):
-                nearbyFoodCount = 0  
-
-            # 调整优先级评分
-            priorityScore = (
-                foodDistance
-                - (nearbyFoodCount * 1.5)  # 适当考虑密集度
-                + (borderDistance * 0.3)   # 回家路线更重要
-                + ghostPenalty             # 避免鬼，但不过度惩罚
-            )
-
-            bestScore = min(bestScore, priorityScore)
-
-        return bestScore
+        return min(self.getMazeDistance(position, food) for food in foodList)
 
     def getGhostThreat(self, successor, position, successorScore):
         """Calculates the threat posed by enemy ghosts."""
@@ -259,47 +292,88 @@ class OffensiveReflexAgent(DummyAgent):
     
     def getCostOfAttackParameter(self, gameState, action):
         """
-        计算攻击参数的权重，决定 Pacman 在不同情况下的行为优先级。
+        Compute the weights for the attack strategy to yield a more reasonable evaluation score, while enhancing ghost avoidance,
+        making the agent favor safe offensive paths over pure retreat.
         """
         successor = self.getSuccessor(gameState, action)
 
-        # 默认权重
+        # **Initialize weights**
         weights = {
-            'offence': 0,  
-            'successorScore': 202,  
-            'foodDistance': -8,  
-            'distanceToGhost': 215,  
-            'capsuleDistance' : 10
+            'successorScore': 2000,  
+            'offence': 100,  
+            'foodScore': 5000,  
+            'distanceToGhost': 0,  
+            'RetreatScore': 0,  
+            'foodEaten': 500,
+            'numNearbyGhosts': 0,
+            'stopPenalty': -1000,  # Penalize stopping
+            'reversePenalty': -1000,
+            'cyclePenalty': -5000,
         }
 
-        # 获取鬼魂信息
-        enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)]
-        ghosts = [a for a in enemies if not a.isPacman and a.getPosition() is not None]
-        scaredGhosts = [g for g in ghosts if g.scaredTimer > 0]
-
-        # 如果有害怕的鬼魂，则降低鬼魂威胁权重
-        if scaredGhosts:
-            weights['distanceToGhost'] = 0  
-
-        # 计算撤退需求
+        # **Retrieve current state information**
         agent_state = successor.getAgentState(self.index)
         carrying_food = agent_state.numCarrying
-        agent_position = agent_state.getPosition()
+        position = agent_state.getPosition()
 
-        if carrying_food >= 5:
-            weights['RetreatScore'] = 3010  # 高优先级撤退
+        # **Compute minimum ghost distance**
+        ghostPositions = [
+            successor.getAgentState(enemy).getPosition()
+            for enemy in self.getOpponents(successor)
+            if not successor.getAgentState(enemy).isPacman and successor.getAgentState(enemy).getPosition() is not None
+        ]
+        ghostDistances = [self.getMazeDistance(position, ghost) for ghost in ghostPositions]
+        minGhostDistance = min(ghostDistances) if ghostDistances else float('inf')
 
+        # **Compute the number of nearby ghosts**
+        numNearbyGhosts = self.getNearbyGhostCount(successor, position, radius=5)
+
+        # **Track consecutive steps without eating food**
+        if not hasattr(self, 'stepsWithoutFood'):
+            self.stepsWithoutFood = 0
+
+        previousGameState = self.getPreviousObservation()
+        if previousGameState:
+            prevFood = len(self.getFood(previousGameState).asList())
+            currFood = len(self.getFood(successor).asList())
+            foodEaten = prevFood - currFood  
+            if foodEaten > 0:
+                self.stepsWithoutFood = 0  # Reset if food is eaten
+            else:
+                self.stepsWithoutFood += 1  # Increment if no food was eaten
+
+        # **Boost offense if no food has been eaten for 10 steps**
+        if self.stepsWithoutFood >= 10:
+            weights['offence'] += 500
+            weights['foodScore'] *= 2  # Prioritize food even more
+
+        # **Dynamically adjust ghost avoidance strategy**
+        if numNearbyGhosts >= 2 and minGhostDistance <= 3:
+            # **When multiple ghosts are nearby, prioritize retreat**
+            weights['distanceToGhost'] = 1000
+            weights['RetreatScore'] += 500
+        elif numNearbyGhosts == 1 and minGhostDistance <= 3:
+            # **With a single ghost, still consider offense**
+            weights['distanceToGhost'] = 400
+            weights['foodScore'] = -300  
+        
+        # elif numNearbyGhosts == 0:
+        #     # **When there are no ghosts, completely disregard retreat**
+        #     weights['distanceToGhost'] = 100
+        #     weights['foodDistance'] = -500 
+        # **Optimize offensive behavior**
+        
+        if minGhostDistance > 5:
+            weights['foodScore'] = -400 
+        elif minGhostDistance <= 3:
+            weights['foodScore'] = -250  
+
+        # **Adjust retreat strategy**
+        if carrying_food >= 1:
+            weights['offence'] = 500  # Maintain a smaller offensive weight even when carrying food
+            weights['foodScore'] *= 0.5  # Reduce the weight of foodScore to prioritize retreat, but still consider food
+            weights['RetreatScore'] = 500
         return weights
-
-    
-    def getOpponentPositions(self, gameState):
-        return [gameState.getAgentPosition(enemy) for enemy in self.getOpponents(gameState)]
-
-
-    
-    def isInEnemyTerritory(self, gameState):
-        my_pos = gameState.getAgentPosition(self.index)
-        return my_pos[0] > gameState.data.layout.width // 2  
     
         
     def chooseAction(self, gameState):
@@ -316,25 +390,25 @@ class OffensiveReflexAgent(DummyAgent):
         maxValue = max(values)
         bestActions = [a for a, v in zip(actions, values) if v == maxValue]
 
-        foodLeft = len(self.getFood(gameState).asList())
+        # foodLeft = len(self.getFood(gameState).asList())
 
-        if foodLeft <= 2:
-            bestDist = 9999
-            for action in actions:
-                successor = self.getSuccessor(gameState, action)
-                pos2 = successor.getAgentPosition(self.index)
-                dist = self.getMazeDistance(self.start,pos2)
-                if dist < bestDist:
-                    bestAction = action
-                    bestDist = dist
-                # action that gets home fastest/shortest
-            return bestAction
+        # if foodLeft <= 2:
+        #     bestDist = 9999
+        #     for action in actions:
+        #         successor = self.getSuccessor(gameState, action)
+        #         pos2 = successor.getAgentPosition(self.index)
+        #         dist = self.getMazeDistance(self.start,pos2)
+        #         if dist < bestDist:
+        #             bestAction = action
+        #             bestDist = dist
+        #         # action that gets home fastest/shortest
+        #     return bestAction
 
-        finalAction = random.choices(
-        population=[random.choice(bestActions), random.choice(actions)],
-        weights=[0.8, 0.2]
-    )[0]
-
+    #     finalAction = random.choices(
+    #     population=[random.choice(bestActions), random.choice(actions)],
+    #     weights=[0.8, 0.2]
+    # )[0]
+        finalAction = random.choice(bestActions)
         return finalAction
     
     def registerInitialState(self, gameState):
