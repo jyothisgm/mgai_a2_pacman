@@ -15,7 +15,7 @@
 from captureAgents import CaptureAgent
 import random, util as util
 from game import Directions
-import math
+import random, util, distanceCalculator 
 from util import nearestPoint
 
 #################
@@ -326,7 +326,7 @@ class OffensiveReflexAgent(DummyAgent):
         agent_state = successor.getAgentState(self.index)
         carrying_food = agent_state.numCarrying
         position = agent_state.getPosition()
-
+        
         # **Compute minimum ghost distance**
         ghostPositions = [
             successor.getAgentState(enemy).getPosition()
@@ -399,7 +399,12 @@ class OffensiveReflexAgent(DummyAgent):
         # start = time.time()
         values = [self.evaluate(gameState, a) for a in actions]
         # print('eval time for agent %d: %.4f' % (self.index, time.time() - start))
-
+        myState = gameState.getAgentState(self.index)
+        myPos = myState.getPosition()
+        if myPos != nearestPoint(myPos):
+            # If the agent is between grid positions, keep moving in the current direction.
+            return gameState.getLegalActions(self.index)[0]
+        
         maxValue = max(values)
         bestActions = [a for a, v in zip(actions, values) if v == maxValue]
 
@@ -407,13 +412,8 @@ class OffensiveReflexAgent(DummyAgent):
         return finalAction
     
     def registerInitialState(self, gameState):
-        self.currentFoodSize = 9999999
-        
+        self.start = gameState.getAgentPosition(self.index)
         CaptureAgent.registerInitialState(self, gameState)
-        # Initial position of the agent
-        self.initPosition = gameState.getAgentState(self.index).getPosition()
-        # Initial attack target position
-        self.initialAttackCoordinates(gameState)
 
     def initialAttackCoordinates(self, gameState):
         layoutInfo = []
@@ -473,77 +473,84 @@ class DefensiveReflexAgent(DummyAgent):
         # Keep middle patrol points
         if len(self.patrolPoints) > 2:
             self.patrolPoints = self.patrolPoints[1:-1]
+    def getIsRed(self):
+        if self.index%2 == 0:
+            return True
+        else:
+            return False
+    def evaluateAttackParameters(self, gameState, action):
 
-    def heuristicEvaluation(self, gameState, action):
-        successor = gameState.generateSuccessor(self.index, action)
-        myPos = successor.getAgentPosition(self.index)
+        self.gameState = gameState
+
         features = util.Counter()
-        
-        # Defensive state check
+        successor = self.getSuccessor(self.gameState, action)
+
         myState = successor.getAgentState(self.index)
-        features['onDefense'] = 1 if not myState.isPacman else 0
+        myPos = myState.getPosition()
 
-        # Calculate distance to visible invaders
+        features['onDefense'] = 1
+        if myState.isPacman: features['onDefense'] = 0
+        # Adds the sonar signal
+        pos = successor.getAgentPosition(self.index)
+        n = successor.getNumAgents()
+        distances = []
+    
+        dists = []
+
+        # Computes distance to invaders we can see
         enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)]
-        invaders = [a for a in enemies if a.isPacman and a.getPosition() is not None]
+        # Invader: Enemy in the vision
+        invaders = [a for a in enemies if a.isPacman and a.getPosition() != None]
         features['numInvaders'] = len(invaders)
-        if invaders:
+        if len(invaders) > 0:
+            poss = [a.getPosition() for a in invaders]
             dists = [self.getMazeDistance(myPos, a.getPosition()) for a in invaders]
-            features['invaderDistance'] = min(dists)
+     
+            if dists != []:
+                features['invaderDistance'] = min(dists)
+        
+            else:
+                features['invaderDistance'] = 0
 
-        # Penalize stopping or reversing
-        if action == Directions.STOP:
-            features['stop'] = 1
+        if action == Directions.STOP: features['stop'] = 1
         rev = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
-        if action == rev:
-            features['reverse'] = 1
+        if action == rev: features['reverse'] = 1
 
-        # Move towards target if no invaders are detected
-        if not invaders and self.target:
-            features['targetDistance'] = self.getMazeDistance(myPos, self.target)
 
-        weights = {
-            'numInvaders': -1000, 
-            'onDefense': 100, 
-            'invaderDistance': -10, 
-            'stop': -100, 
-            'reverse': -2, 
-            'targetDistance': -1
-        }
-        return features * weights
+        startPos = gameState.getInitialAgentPosition(self.index)
+
+        if len(invaders) > 0:
+            features['distToHome'] = 0
+        else:
+            features['distToHome'] = distanceCalculator.Distancer(gameState.data.layout).getDistance(startPos, myPos)
+
+        if self.getIsRed():
+            centralX = (gameState.data.layout.width - 2)/2
+        else:
+            centralX = ((gameState.data.layout.width - 2)/2) + 1
+
+        centralY = (gameState.data.layout.height)/2
+        centralPos = (centralX, centralY)
+
+        if len(invaders) > 0:
+            features['distToCentral'] = 0
+        else:
+            features['distToCentral'] = distanceCalculator.Distancer(gameState.data.layout).getDistance(centralPos, myPos)
+    
+        features['distToHome'] = 0
+        features['distToCentral'] = 0
+
+        return features
+
+
+    def getCostOfAttackParameter(self, gameState, action):
+        return {'numInvaders': -1000, 'onDefense': 100, 'invaderDistance': -10, 'stop': -100, 'reverse': -2}
 
     def chooseAction(self, gameState):
-        position = gameState.getAgentPosition(self.index)
-        
-        # Reset target if we have reached it
-        if position == self.target:
-            self.target = None
-
-        # Detect invaders
-        invaders = [gameState.getAgentState(i).getPosition() for i in self.getOpponents(gameState) 
-                    if gameState.getAgentState(i).isPacman and gameState.getAgentState(i).getPosition() is not None]
-        
-        if invaders:
-            # Prioritize invaders closer to the food or important areas
-            self.target = min(invaders, key=lambda x: self.getMazeDistance(position, x))
-        else:
-            # Handle stolen food
-            if self.previousFood and len(self.getFoodYouAreDefending(gameState).asList()) < len(self.previousFood):
-                stolenFood = set(self.previousFood) - set(self.getFoodYouAreDefending(gameState).asList())
-                if stolenFood:
-                    self.target = stolenFood.pop()
-
-        # Update previous food state
-        self.previousFood = self.getFoodYouAreDefending(gameState).asList()
-
-        # If no invader or stolen food, patrol
-        if self.target is None:
-            self.target = random.choice(self.patrolPoints)
-
         actions = gameState.getLegalActions(self.index)
-        actions.remove(Directions.STOP) if Directions.STOP in actions else None
+        # actions.remove(Directions.STOP) if Directions.STOP in actions else None
 
         # Select the best action based on the heuristic
 
-        bestAction = max(actions, key=lambda a: self.heuristicEvaluation(gameState, a))
+        bestAction = max(actions, key=lambda a: self.evaluate(gameState, a))
         return bestAction
