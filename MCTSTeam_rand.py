@@ -618,12 +618,28 @@ class DefensiveReflexAgent(MCTSAgent):
     
         features['distToHome'] = 0
         features['distToCentral'] = 0
+        
+        
+        position = successor.getAgentState(self.index).getPosition()
+        if not hasattr(self, 'recentPositions'):
+            self.recentPositions = []
+        
+        self.recentPositions.append(position)
 
+        if len(self.recentPositions) > 4:
+            self.recentPositions.pop(0) 
+
+        if len(self.recentPositions) == 4:
+            A, B, C, D = self.recentPositions
+            # Check for clockwise cycle (A → B → C → D → A) or counterclockwise cycle (A → D → C → B → A)
+            if (A == C and B == D) or (A == D and B == C):
+                features['cyclePenalty'] = 100
         return features
 
 
   def getCostOfAttackParameter(self, gameState, action):
-    return {'numInvaders': -1000, 'onDefense': 100, 'invaderDistance': -10, 'stop': -100, 'reverse': -2}
+        return {'numInvaders': -1000, 'onDefense': 100, 'invaderDistance': -10, 'stop': -100, 'reverse': -200, 'cyclePenalty': -5000}
+
 
 
 
