@@ -177,13 +177,14 @@ class OffensiveReflexAgent(DummyAgent):
         if previousGameState:
             prevFood = len(self.getFood(previousGameState).asList())
             features['foodEaten'] = prevFood - features['foodNum']  # Food reduction count, incentivizes eating food
+
+        if successor.getAgentState(self.index).numCarrying > 0:
+            features['foodScore'] *= 0.1
         if action == Directions.STOP:
             features['stopPenalty'] = 1  # Penalize stopping
         
         currentDirection = gameState.getAgentState(self.index).configuration.direction
         reverseDirection = Directions.REVERSE[currentDirection]
-        if successor.getAgentState(self.index).numCarrying > 0:
-            features['foodScore'] *= 0.1
         if action == reverseDirection:
             features['reversePenalty'] = 1
         
@@ -253,7 +254,7 @@ class OffensiveReflexAgent(DummyAgent):
         ghostThreatFactor = 20 / (minGhostDistance + 1)  # The closer the ghost, the higher the threat
         carriedFood = successor.getAgentState(self.index).numCarrying
         foodWeight = carriedFood ** 1.5  # The more food carried, the stronger the retreat urge
-        retreatScore = (100 / (borderDistance + 1)) + ghostThreatFactor + foodWeight  # Higher retreatScore means higher urgency to retreat
+        retreatScore = (100 / (borderDistance + 1)) + foodWeight  # Higher retreatScore means higher urgency to retreat
         return retreatScore
     
     #######################
@@ -266,7 +267,7 @@ class OffensiveReflexAgent(DummyAgent):
         """
         foodList = self.getFood(successor).asList()  # Get list of food positions
         if not foodList:
-            return 0  # Return 0 if there is no food
+            return self.getRetreatScore(successor, position)
 
         # Calculate the distance to each food item and find the minimum distance
         minFoodDistance = min(self.getMazeDistance(position, food) for food in foodList)
@@ -294,7 +295,7 @@ class OffensiveReflexAgent(DummyAgent):
             minDisToGhost = min(disToGhost)
             # threat score
             return minDisToGhost + successorScore if minDisToGhost < 5 else 0
-        return 0
+        return successorScore
     
 
 
@@ -349,7 +350,7 @@ class OffensiveReflexAgent(DummyAgent):
             currFood = len(self.getFood(successor).asList())
             foodEaten = prevFood - currFood  
             if foodEaten > 0:
-                self.stepsWithoutFood = 0  # Reset if food is eaten
+                self.stepsWithoutFood -= 1  # Reset if food is eaten
             else:
                 self.stepsWithoutFood += 1  # Increment if no food was eaten
 
@@ -362,11 +363,13 @@ class OffensiveReflexAgent(DummyAgent):
         if numNearbyGhosts >= 2 and minGhostDistance <= 3:
             # **When multiple ghosts are nearby, prioritize retreat**
             weights['distanceToGhost'] = 1000
+            weights['foodScore'] = -300  
             weights['RetreatScore'] += 500
         elif numNearbyGhosts == 1 and minGhostDistance <= 3:
             # **With a single ghost, still consider offense**
             weights['distanceToGhost'] = 400
             weights['foodScore'] = -300  
+            weights['RetreatScore'] += 200
         
         # # **Optimize offensive behavior**
         if minGhostDistance > 5:
@@ -375,7 +378,8 @@ class OffensiveReflexAgent(DummyAgent):
         #     weights['foodScore'] = -250  
 
         if carrying_food >= 1:
-            weights['offence'] = 500  # Maintain a smaller offensive weight even when carrying food
+            weights['distanceToGhost'] = 0
+            weights['offence'] = 100  # Maintain a smaller offensive weight even when carrying food
             weights['foodScore'] *= 0.5  # Reduce the weight of foodScore to prioritize retreat, but still consider food
             weights['RetreatScore'] = weights['foodEaten']  # Increase retreat priority when food is carried
 
@@ -395,19 +399,14 @@ class OffensiveReflexAgent(DummyAgent):
         """
         actions = gameState.getLegalActions(self.index)
 
-        # You can profile your evaluation time by uncommenting these lines
-        # start = time.time()
         values = [self.evaluate(gameState, a) for a in actions]
-        # print('eval time for agent %d: %.4f' % (self.index, time.time() - start))
         myState = gameState.getAgentState(self.index)
         myPos = myState.getPosition()
         if myPos != nearestPoint(myPos):
-            # If the agent is between grid positions, keep moving in the current direction.
             return gameState.getLegalActions(self.index)[0]
         
         maxValue = max(values)
         bestActions = [a for a, v in zip(actions, values) if v == maxValue]
-
         finalAction = random.choice(bestActions)
         return finalAction
     
@@ -460,19 +459,19 @@ class DefensiveReflexAgent(DummyAgent):
         self.setPatrolPoint(gameState)
 
     def setPatrolPoint(self, gameState):
-        '''Dynamic patrol point selection based on the center of the maze.'''
-        x = (gameState.data.layout.width - 2) // 2
-        if not self.red:
-            x += 1
+        """Ensure patrol points are strictly within the agent's own territory."""
+        map_width = gameState.data.layout.width
+        border_x = (map_width // 2) - 1 if self.red else (map_width // 2)  # Keep within own territory
 
         self.patrolPoints = []
-        for i in range(1, gameState.data.layout.height - 1):
-            if not gameState.hasWall(x, i):
-                self.patrolPoints.append((x, i))
+        for y in range(1, gameState.data.layout.height - 1):  # Avoid walls at top/bottom
+            if not gameState.hasWall(border_x, y):
+                self.patrolPoints.append((border_x, y))
 
         # Keep middle patrol points
         if len(self.patrolPoints) > 2:
-            self.patrolPoints = self.patrolPoints[1:-1]
+            middle_index = len(self.patrolPoints) // 2
+            self.patrolPoints = [self.patrolPoints[middle_index]]  # Pick center patrol point
     def getIsRed(self):
         if self.index%2 == 0:
             return True
@@ -539,12 +538,27 @@ class DefensiveReflexAgent(DummyAgent):
     
         features['distToHome'] = 0
         features['distToCentral'] = 0
+        
+        
+        position = successor.getAgentState(self.index).getPosition()
+        if not hasattr(self, 'recentPositions'):
+            self.recentPositions = []
+        
+        self.recentPositions.append(position)
 
+        if len(self.recentPositions) > 4:
+            self.recentPositions.pop(0) 
+
+        if len(self.recentPositions) == 4:
+            A, B, C, D = self.recentPositions
+            # Check for clockwise cycle (A → B → C → D → A) or counterclockwise cycle (A → D → C → B → A)
+            if (A == C and B == D) or (A == D and B == C):
+                features['cyclePenalty'] = 100
         return features
 
 
     def getCostOfAttackParameter(self, gameState, action):
-        return {'numInvaders': -1000, 'onDefense': 100, 'invaderDistance': -10, 'stop': -100, 'reverse': -2}
+        return {'numInvaders': -1000, 'onDefense': 100, 'invaderDistance': -10, 'stop': -100, 'reverse': -200, 'cyclePenalty': -5000}
 
     def chooseAction(self, gameState):
         actions = gameState.getLegalActions(self.index)
