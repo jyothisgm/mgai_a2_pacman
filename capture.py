@@ -60,6 +60,8 @@ from game import Agent
 from game import reconstituteGrid
 import sys, util as util, types, time, random, importlib
 import keyboardAgents
+import pickle
+import trueskill
 import importlib.util
 # If you change these, you won't affect the server, so you can't cheat
 KILL_POINTS = 0
@@ -963,51 +965,115 @@ def replayGame( layout, agents, actions, display, length, redTeamName, blueTeamN
 
     display.finish()
 
-def runGames( layouts, agents, display, length, numGames, record, numTraining, redTeamName, blueTeamName, muteAgents=False, catchExceptions=False ):
+def runGames(layouts, agents, display, length, numGames, record, numTraining, 
+             redTeamName, blueTeamName, muteAgents=False, catchExceptions=False):
+    """Run multiple games and calculate ELO/TrueSkill ratings"""
+    rules = CaptureRules()
+    games = []
+    
+    # Initialize rating systems
+    elo_scores = {redTeamName: 1500, blueTeamName: 1500}
+    trueskill_env = trueskill.TrueSkill(draw_probability=0.01)
+    red_rating = trueskill_env.create_rating()
+    blue_rating = trueskill_env.create_rating()
+    
+    if numTraining > 0:
+        print(f'Playing {numTraining} training games')
 
-  rules = CaptureRules()
-  games = []
+    for i in range(numGames):
+        beQuiet = i < numTraining
+        layout = layouts[i]
+        
+        # Configure display
+        if beQuiet:
+            from textDisplay import NullGraphics
+            gameDisplay = NullGraphics()
+            rules.quiet = True
+        else:
+            gameDisplay = display
+            rules.quiet = False
+            
+        # Run game
+        g = rules.newGame(layout, agents, gameDisplay, length, muteAgents, catchExceptions)
+        g.run()
+        
+        # Collect data
+        score = g.state.data.score
+        
+        # Update ratings for non-training games
+        if not beQuiet:
+            games.append(g)
+            outcome = 'red' if score > 0 else 'blue' if score < 0 else 'tie'
+            
+            # Update ELO
+            elo_scores = update_elo(
+                redTeamName, blueTeamName, elo_scores,
+                red_score=1 if outcome == 'red' else 0,
+                blue_score=1 if outcome == 'blue' else 0
+            )
+            
+            # Update TrueSkill
+            red_rating, blue_rating = update_trueskill(
+                red_rating, blue_rating,
+                red_win=(outcome == 'red'),
+                blue_win=(outcome == 'blue')
+            )
 
-  if numTraining > 0:
-    print('Playing %d training games' % numTraining)
+        # Save replay
+        if record and not beQuiet:
+            components = {
+                'layout': layout,
+                'agents': [str(a) for a in agents],
+                'actions': g.moveHistory,
+                'length': length,
+                'teams': {'red': redTeamName, 'blue': blueTeamName},
+                'score': score
+            }
+            with open(f'replay_{i}.pkl', 'wb') as f:
+                pickle.dump(components, f)
+            print(f"[Game {i}] Replay saved")
 
-  for i in range( numGames ):
-    beQuiet = i < numTraining
-    layout = layouts[i]
-    if beQuiet:
-        # Suppress output and graphics
-        import textDisplay
-        gameDisplay = textDisplay.NullGraphics()
-        rules.quiet = True
+    # Final statistics
+    if numGames - numTraining > 0:
+        valid_games = games[numTraining:]
+        scores = [g.state.data.score for g in valid_games]
+        
+        print('\n===== Final Statistics =====')
+        print(f'Total Games: {len(valid_games)}')
+        print(f'Red Wins: {sum(s>0 for s in scores)} ({sum(s>0 for s in scores)/len(scores):.1%})')
+        print(f'Blue Wins: {sum(s<0 for s in scores)} ({sum(s<0 for s in scores)/len(scores):.1%})')
+        print(f'Average Score: {sum(scores)/len(scores):.1f}')
+        
+        print('\n===== Rating Systems =====')
+        print(f'ELO Ratings - Red: {elo_scores[redTeamName]:.1f}')
+        print(f'              Blue: {elo_scores[blueTeamName]:.1f}')
+        print(f'TrueSkill - Red: μ={red_rating.mu:.1f}, σ={red_rating.sigma:.1f}')
+        print(f'            Blue: μ={blue_rating.mu:.1f}, σ={blue_rating.sigma:.1f}')
+
+    return games
+
+def update_elo(red_team, blue_team, elo, red_score, blue_score, K=32):
+    """Update ELO ratings"""
+    expected_red = 1 / (1 + 10 ** ((elo[blue_team] - elo[red_team])/400))
+    expected_blue = 1 - expected_red
+    
+    elo[red_team] += K * (red_score - expected_red)
+    elo[blue_team] += K * (blue_score - expected_blue)
+    
+    elo[red_team] = max(elo[red_team], 100)
+    elo[blue_team] = max(elo[blue_team], 100)
+    return elo
+
+def update_trueskill(red, blue, red_win, blue_win, env=None):
+    """Update TrueSkill ratings"""
+    env = env or trueskill.TrueSkill()
+    if red_win:
+        new_red, new_blue = env.rate([(red,), (blue,)], ranks=[0, 1])
+    elif blue_win:
+        new_red, new_blue = env.rate([(blue,), (red,)], ranks=[0, 1])
     else:
-        gameDisplay = display
-        rules.quiet = False
-    g = rules.newGame( layout, agents, gameDisplay, length, muteAgents, catchExceptions )
-    g.run()
-    if not beQuiet: games.append(g)
-
-    g.record = None
-    if record:
-      import time, pickle, game
-      #fname = ('recorded-game-%d' % (i + 1)) +  '-'.join([str(t) for t in time.localtime()[1:6]])
-      #f = file(fname, 'w')
-      components = {'layout': layout, 'agents': [game.Agent() for a in agents], 'actions': g.moveHistory, 'length': length, 'redTeamName': redTeamName, 'blueTeamName':blueTeamName }
-      #f.close()
-      print("recorded")
-      g.record = pickle.dumps(components)
-      with open('replay-%d'%i,'wb') as f:
-        f.write(g.record)
-
-  if numGames > 1:
-    scores = [game.state.data.score for game in games]
-    redWinRate = [s > 0 for s in scores].count(True)/ float(len(scores))
-    blueWinRate = [s < 0 for s in scores].count(True)/ float(len(scores))
-    print('Average Score:', sum(scores) / float(len(scores)))
-    print('Scores:       ', ', '.join([str(score) for score in scores]))
-    print('Red Win Rate:  %d/%d (%.2f)' % ([s > 0 for s in scores].count(True), len(scores), redWinRate))
-    print('Blue Win Rate: %d/%d (%.2f)' % ([s < 0 for s in scores].count(True), len(scores), blueWinRate))
-    print('Record:       ', ', '.join([('Blue', 'Tie', 'Red')[max(0, min(2, 1 + s))] for s in scores]))
-  return games
+        new_red, new_blue = env.rate([(red,), (blue,)], ranks=[0, 0])
+    return new_red[0], new_blue[0]
 
 def save_score(game):
     with open('score', 'w') as f:
