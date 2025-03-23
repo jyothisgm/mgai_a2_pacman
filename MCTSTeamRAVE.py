@@ -76,8 +76,8 @@ class MCTSAgent(CaptureAgent):
                 legal_children = [child for child in node.children 
                                 if child.action != Directions.REVERSE.get(self.last_action, None)]
                 if not legal_children:
-                    return self.bestChild(node, self.exploration_weight)  # 选择最好的子节点
-                node = random.choice(legal_children)  # 避免回头
+                    return self.bestChild(node, self.exploration_weight) 
+                node = random.choice(legal_children) 
         return node
 
     def defaultPolicy(self, state):
@@ -85,7 +85,6 @@ class MCTSAgent(CaptureAgent):
         for _ in range(self.rollout_depth):
             legal_actions = [a for a in state.getLegalActions(self.index) if a != Directions.STOP]
 
-            # 过滤回头动作
             if self.last_action and Directions.REVERSE[self.last_action] in legal_actions:
                 legal_actions.remove(Directions.REVERSE[self.last_action])
 
@@ -94,7 +93,7 @@ class MCTSAgent(CaptureAgent):
 
             action = max(legal_actions, key=lambda a: self.evaluate(state, a))
             state = state.generateSuccessor(self.index, action)
-            self.last_action = action  # 记录上一次动作
+            self.last_action = action
 
         return self.evaluate(state, Directions.STOP)
 
@@ -128,15 +127,23 @@ class MCTSAgent(CaptureAgent):
         return ancestors
 
     def bestChild(self, node):
-        """ Select the best child node based on UCT + RAVE score, ignoring STOP. """
+        """ Select the best child node using UCT + RAVE. """
         legal_children = [child for child in node.children if child.action != Directions.STOP]
         
         if not legal_children:
             return random.choice(node.children) if node.children else node  
 
-        return max(legal_children, key=lambda child: 
-                    child.reward / child.visits + self.exploration_weight * math.sqrt(math.log(node.visits) / (child.visits + 1)))
+        def rave_uct_value(child):
+            """ Compute the hybrid UCT + RAVE value. """
+            Q_uct = child.reward / child.visits
+            Q_rave = child.rave_values.get(child.action, 0) / (child.rave_visits.get(child.action, 1))  # 避免除零
+            N_rave = child.rave_visits.get(child.action, 0)
+            beta = N_rave / (child.visits + N_rave + 1)
+            
+            return (1 - beta) * Q_uct + beta * Q_rave + self.exploration_weight * math.sqrt(math.log(node.visits) / (child.visits + 1))
 
+        return max(legal_children, key=rave_uct_value)
+    
     def getSuccessor(self, gameState, action):
         """ Get the successor state. """
         successor = gameState.generateSuccessor(self.index, action)
