@@ -176,15 +176,15 @@ class AttackerAgent(BaseStrategyAgent):
         if self.aggressiveMode:
             # Weights for aggressive mode
             weights = {
-                    'isAttacker': 3010,
-                    'scoreChange': 5000,
+                    'isAttacker': 20,
+                    'scoreChange': 202,
                     'distanceToFood': -8,
                     'distanceToCapsule': -210,
                     'ghostProximity': 210}
         else:
             # Normal mode weights
             weights = {
-                    'isAttacker': 500,
+                    'isAttacker': 10,
                     'scoreChange': 202,
                     'distanceToFood': -8,
                     'distanceToCapsule': -210,
@@ -431,7 +431,7 @@ class AttackerAgent(BaseStrategyAgent):
                     simulationValue = 0
                     # Run multiple simulations for each possible move
                     
-                    for _ in range(10):
+                    for _ in range(20):
                         simulationValue += self.simulateMonteCarlo(nextState, 20)
                     moveEvaluations.append(simulationValue)
 
