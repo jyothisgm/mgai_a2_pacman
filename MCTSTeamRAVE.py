@@ -126,21 +126,33 @@ class MCTSAgent(CaptureAgent):
             node = node.parent
         return ancestors
 
-    def bestChild(self, node):
-        """ Select the best child node using UCT + RAVE. """
+    def bestChild(self, node, k=3):
+        """ Select the best child node using the new RAVE + UCT formula. """
         legal_children = [child for child in node.children if child.action != Directions.STOP]
-        
+
         if not legal_children:
             return random.choice(node.children) if node.children else node  
 
         def rave_uct_value(child):
-            """ Compute the hybrid UCT + RAVE value. """
-            Q_uct = child.reward / child.visits
-            Q_rave = child.rave_values.get(child.action, 0) / (child.rave_visits.get(child.action, 1))  # 避免除零
+            """ Compute the hybrid UCT + RAVE value using the given formula. """
+            N = node.visits
+            N_s = child.visits
             N_rave = child.rave_visits.get(child.action, 0)
-            beta = N_rave / (child.visits + N_rave + 1)
+
+            # Compute Q values
+            Q_uct = child.reward / N_s if N_s > 0 else 0
+            Q_rave = child.rave_values.get(child.action, 0) / (N_rave + 1) 
             
-            return (1 - beta) * Q_uct + beta * Q_rave + self.exploration_weight * math.sqrt(math.log(node.visits) / (child.visits + 1))
+            # Compute the weighting factor from the formula
+            beta = math.sqrt(k / (3 * N + k))
+
+            # Compute the final Q value
+            Q_hybrid = beta * Q_rave + (1 - beta) * Q_uct
+
+            # Add exploration term
+            exploration = self.exploration_weight * math.sqrt(math.log(N + 1) / (N_s + 1))
+
+            return Q_hybrid + exploration
 
         return max(legal_children, key=rave_uct_value)
     
