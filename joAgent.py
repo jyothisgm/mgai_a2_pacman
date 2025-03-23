@@ -550,17 +550,18 @@ class DefenderAgent(BaseStrategyAgent):
             if enemyAgent.isPacman and enemyAgent.getPosition() != None:
                 enemyPosition = enemyAgent.getPosition()
                 intruders.append(enemyPosition)
-                self.chase = True
             else:
-                if self.getMazeDistance(enemyAgent.getPosition(), currentPosition) > nearestFood * 2 + 2 or enemyAgent.scaredTimer > 4:
+                if self.getMazeDistance(enemyAgent.getPosition(), currentPosition) > nearestFood * 2 + 2 or enemyAgent.scaredTimer > 5:
                     attack.append(True)
                 else:
                     attack.append(False)
                     self.attack = False
+                    self.targetPosition = None
             enemyIdx = enemyIdx + 1
         # If intruders found, target the closest one
         if len(intruders) > 0:
             self.attack = False
+            self.chase = True
             for intruderPosition in intruders:
                 distance = self.getMazeDistance(intruderPosition, currentPosition)
                 if distance < minimumDistance:
