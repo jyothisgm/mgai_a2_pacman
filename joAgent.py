@@ -233,17 +233,20 @@ class AttackerAgent(BaseStrategyAgent):
         while depth > 0:
             next_move = self.getRandomLegalMove(simulationState)
             oppositeDirection = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
-
+            current_state = simulationState.getAgentState(self.index).isPacman
             enemies = [gameState.getAgentState(i) for i in self.getOpponents(gameState)]
-            ghosts = [a for a in enemies if not a.isPacman and a.getPosition() != None and a.scaredTimer == 0]
+            ghosts = [a.getPosition() for a in enemies if not a.isPacman and a.getPosition() != None and a.scaredTimer == 0]
             # if ghosts and min([self.getMazeDistance(self.currentPosition, a.getPosition()) for a in ghosts]) < 5 and next_move == oppositeDirection:
             #     direction_change += 1
             simulationState = simulationState.generateSuccessor(self.index, next_move)
             # simulationState
             # current_sim_pos = simulationState.getAgentState(self.index).getPosition()
             depth -= 1
-            
+            if simulationState.getAgentState(self.index).getPosition() in ghosts:
+                value -= 10000
             value += self.evaluate(simulationState, Directions.STOP)
+            if current_state and not simulationState.getAgentState(self.index).isPacman and self.getScore(simulationState):
+                break
         value -= abs(direction_change * 0.05 * value)
         return value  # Evaluate final state
 
