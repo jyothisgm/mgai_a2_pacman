@@ -45,89 +45,94 @@ def createTeam(firstIndex, secondIndex, isRed,
 ##############
 
 class MCTSAgent(CaptureAgent):
-  """
-  A Monte-Carlo Tree Search base Agent.
-  """
-  def registerInitialState(self, gameState):
-    self.start = gameState.getAgentPosition(self.index)
-    CaptureAgent.registerInitialState(self, gameState)
+    def __init__(self, index, simulations=3, rollout_depth=5, exploration_weight=1):
+        super().__init__(index)
+        self.simulations = simulations
+        self.rollout_depth = rollout_depth
+        self.exploration_weight = exploration_weight
+    
+    def registerInitialState(self, gameState):
+        self.start = gameState.getAgentPosition(self.index)
+        CaptureAgent.registerInitialState(self, gameState)
+        if self.red:
+            self.middle = (gameState.data.layout.width - 2) // 2
+        else:
+            self.middle = (gameState.data.layout.width - 2) // 2 + 1
+        self.boundary = []
+        for i in range(1, gameState.data.layout.height - 1):
+            if not gameState.hasWall(self.middle, i):
+                self.boundary.append((self.middle, i))   
+    
+    def chooseAction(self, gameState):
+        """ Run MCTS to determine the best action. """
+        root = Node(gameState, self.index)
+        for _ in range(self.simulations):
+            node = self.treePolicy(root)
+            reward = self.defaultPolicy(node.state)
+            self.backpropagate(node, reward)
+        return self.bestChild(root).action
 
-  def chooseAction(self, gameState):
-    """
-    Picks among the actions with the highest Q(s,a).
-    """
-    actions = gameState.getLegalActions(self.index)
-    values = [self.evaluate(gameState, a) for a in actions]
+    def treePolicy(self, node):
+        """ Selection & Expansion: Traverse the tree using UCT and expand new nodes if possible. """
+        while not node.isTerminal():
+            if not node.isFullyExpanded():
+                return node.expand()
+            else:
+                node = self.bestChild(node, self.exploration_weight)
+        return node
+    
+    # def defaultPolicy(self, state):
+    #     """ Simulation: Perform rollout using heuristic score. """
+    #     for _ in range(self.rollout_depth):
+    #         legal_actions = state.getLegalActions(self.index)
+    #         if not legal_actions:
+    #             break
+    #         action = random.choice(legal_actions)
+    #         state = state.generateSuccessor(self.index, action)
+    #     return self.evaluate(state, Directions.STOP)
+    
+    def defaultPolicy(self, state):
+        """ Use heuristic evaluation instead of random rollouts, avoiding STOP action. """
+        for _ in range(self.rollout_depth):
+            legal_actions = state.getLegalActions(self.index)
 
-    maxValue = max(values)
-    bestActions = [a for a, v in zip(actions, values) if v == maxValue]
+            if not legal_actions:
+                break
+            if random.random() < 0.1:  
+                action = random.choice(legal_actions)
+            else:
+                # Choose the action with the highest heuristic score
+                action = max(legal_actions, key=lambda a: self.evaluate(state, a))
+            state = state.generateSuccessor(self.index, action)
 
-    # # Once attacker capture food, then it go back to home
-    # agentState = gameState.getAgentState(self.index)
+        return self.evaluate(state, Directions.STOP)
+    
+    def evaluate(self, gameState, action):
+        """
+        Computes a linear combination of features and feature weights
+        """
+        features = self.evaluateAttackParameters(gameState, action)
+        weights = self.getCostOfAttackParameter(gameState, action)
+        return features * weights
 
-    # if agentState.numCarrying > 1:
-    #   bestDist = 9999
-    #   for action in actions:
-    #     successor = self.getSuccessor(gameState, action)
-    #     pos2 = successor.getAgentPosition(self.index)
-    #     dist = self.getMazeDistance(self.start,pos2)
-    #     if dist < bestDist:
-    #       bestAction = action
-    #       bestDist = dist
-    #   return bestAction
+    def backpropagate(self, node, reward):
+        """ Backpropagation: Propagate the reward up the tree. """
+        while node:
+            node.visits += 1
+            node.reward += reward
+            node = node.parent
 
-    # # Once total food left <= 2, then they go back to home
-    # foodLeft = len(self.getFood(gameState).asList())
+    def bestChild(self, node, exploration_weight=0):
+        """ Select the best child node based on UCT score. """
+        return max(node.children, key=lambda child: child.reward / child.visits + exploration_weight * math.sqrt(math.log(node.visits) / (child.visits + 1)))
 
-    # if foodLeft <= 2:
-    #   bestDist = 9999
-    #   for action in actions:
-    #     successor = self.getSuccessor(gameState, action)
-    #     pos2 = successor.getAgentPosition(self.index)
-    #     dist = self.getMazeDistance(self.start,pos2)
-    #     if dist < bestDist:
-    #       bestAction = action
-    #       bestDist = dist
-    #   return bestAction
-
-    return random.choice(bestActions)
-
-  def getSuccessor(self, gameState, action):
-    """
-    Finds the next successor which is a grid position (location tuple).
-    """
-    successor = gameState.generateSuccessor(self.index, action)
-    pos = successor.getAgentState(self.index).getPosition()
-    if pos != nearestPoint(pos):
-      # Only half a grid position was covered
-      return successor.generateSuccessor(self.index, action)
-    else:
-      return successor
-
-  def evaluate(self, gameState, action):
-    """
-    Computes a linear combination of features and feature weights
-    """
-    features = self.evaluateAttackParameters(gameState, action)
-    weights = self.getCostOfAttackParameter(gameState, action)
-    return features * weights
-
-  def evaluateAttackParameters(self, gameState, action):
-    """
-    Returns a counter of features for the state
-    """
-    features = util.Counter()
-    successor = self.getSuccessor(gameState, action)
-    features['successorScore'] = self.getScore(successor)
-    return features
-
-  def getCostOfAttackParameter(self, gameState, action):
-    """
-    Normally, weights do not depend on the gamestate.  They can be either
-    a counter or a dictionary.
-    """
-    return {'successorScore': 1.0}
-
+    def getSuccessor(self, gameState, action):
+        successor = gameState.generateSuccessor(self.index, action)
+        pos = successor.getAgentState(self.index).getPosition()
+        if pos != nearestPoint(pos):
+            return successor.generateSuccessor(self.index, action)
+        else:
+            return successor
 ######################
 # OffensiveReflexAgent #
 ######################
@@ -136,82 +141,17 @@ class OffensiveReflexAgent(MCTSAgent):
     """
     A Monte Carlo Tree Search-based offensive agent that seeks food efficiently.
     """
+    def __init__(self, index):
+        super().__init__(index)
+        self.recentPositions = []  # Track last few positions to detect cycles
+        self.visitedPositions = set()  # Track visited positions to encourage exploration
+        self.escapeMode = False  # Whether the agent is in escape mode
+        self.lastEscapeDirection = None  # Track last escape direction
 
-    def registerInitialState(self, gameState):
-        CaptureAgent.registerInitialState(self, gameState)
-        self.recentPositions = []  # Tracks the last few positions to detect cycles
-        self.visitedPositions = set()  # Stores recently visited positions to avoid local loops
-        self.escapeMode = False  # Flag indicating if the agent is in escape mode
-        self.lastEscapeDirection = None  # Stores the last escape direction to prevent circling back
+    # def registerInitialState(self, gameState):
+    #     CaptureAgent.registerInitialState(self, gameState)
 
-        self.distancer.getMazeDistances()
-        self.boundary = []
-        self.numSims = NUM_SIM
-        # Maximum number of simulations per turn
-        self.sturns = SIM_LEVEL
-        # Depth of the MCTS tree
-        self.levels = LEVEL
-        # Initial value of the agent's state
-        self.svalue = 0
-        # List to store the current agent's move history
-        self.smoves = []
-        self.gameState = gameState
-        # The current tree node representing the agent's state
-        self.current_node = Node(MState(self.gameState, self.index, self.svalue, self.smoves, self.sturns, agent_type='OffensiveReflexAgent'))
-        # Starting position of the agent
-        self.start = self.current_node.mstate.gameState.getAgentState(self.index).getPosition()
-
-    def getOffAction(self, gameState):
-        """
-        Prevent CaptureAgent from always using the overridden chooseAction.
-        """
-        self.observationHistory.append(gameState)
-
-        myState = gameState.getAgentState(self.index)
-        myPos = myState.getPosition()
-        if myPos != nearestPoint(myPos):
-            # If the agent is between grid positions, keep moving in the current direction.
-            return gameState.getLegalActions(self.index)[0]
-        else:
-            return self.chooseOffAction(gameState)
-
-    def chooseOffAction(self, gameState):
-        """
-        Selects an action using Monte Carlo Tree Search.
-        """
-        return self.runSimulation(self.current_node, gameState, self.index, self.levels, self.numSims)
-
-    def runSimulation(self, current_node, gameState, index, numSims=5):
-        """
-        Runs MCTS to find the best action.
-        """
-        self.gameState = gameState
-        self.index = index
-        self.current_node = current_node
-
-        value = 0
-        self.current_node.resetNode()
-        self.current_node.mstate.resetMState(self.gameState, index, value)
-        
-        self.index = index
-        self.current_node.children = []
-
-        # l = levels
-        child_node = UCTSEARCH(numSims, self.current_node, self.index)
-
-        return child_node.mstate.fromMove
-
-    def getSuccessor(self, gameState, action):
-        """
-        Finds the next successor which is a grid position (location tuple).
-        """
-        successor = gameState.generateSuccessor(self.index, action)
-        pos = successor.getAgentState(self.index).getPosition()
-        if pos != nearestPoint(pos):
-            return successor.generateSuccessor(self.index, action)
-        else:
-            return successor
-
+    
     def evaluateAttackParameters(self, gameState, action):
         features = util.Counter()
         successor = self.getSuccessor(gameState, action)
@@ -405,428 +345,167 @@ class OffensiveReflexAgent(MCTSAgent):
 #####################
 
 class DefensiveReflexAgent(MCTSAgent):
-  """
-  A reflex agent that keeps its side Pacman-free. Again,
-  this is to give you an idea of what a defensive agent
-  could be like.  It is not the best or only way to make
-  such an agent.
-  """
+    def __init__(self, index):
+        super().__init__(index)
+        self.defenseMode = True  # Default mode is defense
+        self.targetInvader = None  # Tracks the current invader being chased
+        self.lastDefensePosition = None  # Stores the last defensive position
 
 
-#######  Monte Carlo Tree Search Simulation
-  def registerInitialState(self, gameState):
-    CaptureAgent.registerInitialState(self, gameState)
-    self.distancer.getMazeDistances()
 
-    if self.red:
-        self.middle = (gameState.data.layout.width - 2) // 2
-    else:
-        self.middle = (gameState.data.layout.width - 2) // 2 + 1
-        
-    self.numSims = NUM_SIM
-    self.sturns = SIM_LEVEL
-    self.levels = LEVEL
-    self.svalue = 0 
-    self.smoves = []
-    self.gameState = gameState
-    self.current_node = Node( MState(self.gameState, self.index, self.svalue, self.smoves, self.sturns) )
-    self.start = self.current_node.mstate.gameState.getAgentState(self.index).getPosition()
+    def evaluateAttackParameters(self, gameState, action):
 
-  def getDefAction(self, gameState):
-    """
-    Prevent CaptureAgent always use the overriden chooseAction from DefensiveReflexAgent
-    """
-    self.observationHistory.append(gameState)
+            features = util.Counter()
+            successor = self.getSuccessor(gameState, action)
+            myState = successor.getAgentState(self.index)
+            myPos = myState.getPosition()
 
-    myState = gameState.getAgentState(self.index)
-    myPos = myState.getPosition()
-    if myPos != nearestPoint(myPos):
-      # We're halfway from one position to the next
-      return gameState.getLegalActions(self.index)[0]
-    else:
-      return self.chooseDefAction(gameState)
+            # Determine if the agent is on defense
+            features['onDefense'] = 0 if myState.isPacman else 1
 
-  def chooseDefAction(self, gameState):
+            # Compute the defensive position (fallback position if all food is eaten)
+            foodCenter = self.getCenterPointOfDefensiveFood(gameState)
+            if gameState.hasWall(*foodCenter):
+                foodCenter = self.nearPosInGrid(gameState, foodCenter)
+            features['distToFoodCenter'] = self.getMazeDistance(myPos, foodCenter)
 
-    """
-    Picks among the actions with the highest Q(s,a).
-    """
-    return self.runSimulation(self.current_node, gameState, self.index, self.levels, self.numSims)
+            # Identify invaders
+            invaders = [a for a in [successor.getAgentState(i) for i in self.getOpponents(successor)] if a.isPacman and a.getPosition()]
+            features['numInvaders'] = len(invaders)
 
-  def runSimulation(self, current_node, gameState, index, numSims=5):
-    """
-    Finds the next successor which is a grid position (location tuple).
-    """
-    self.gameState = gameState
-    self.index = index  
-    self.current_node = current_node
+            # Select the highest-priority invader to chase
+            if invaders:
+                self.defenseMode = False  # Switch to chase mode
+                # Select the closest invader
+                closestInvader = min(invaders, key=lambda inv: self.getMazeDistance(myPos, inv.getPosition()))
+                self.targetInvader = closestInvader.getPosition()
+                features['invaderDistance'] = self.getMazeDistance(myPos, self.targetInvader)
 
-    value = 0
-    self.current_node.resetNode()
-    self.current_node.mstate.resetMState(self.gameState, index, value)
+                # If the invader is very close, increase defensive pressure
+                if features['invaderDistance'] < 2:
+                    features['inDangerousZone'] = 1  # Enemy is too close
+            else:
+                self.defenseMode = True  # No invaders, return to defensive mode
+                self.targetInvader = None
 
-    self.index = index
+            # Fallback strategy when scared
+            if successor.getAgentState(self.index).scaredTimer > 0:
+                features['fallback'] = features['invaderDistance'] * 2  # Reduce chase weight if scared
 
-    self.current_node.children = []
+            # Avoid meaningless reverses & stopping
+            if action == Directions.STOP:
+                features['stop'] = 1
+            if action == Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]:
+                features['reverse'] = 1
 
-    # l = LEVEL
-    child_node = UCTSEARCH(numSims, self.current_node, self.index)
-
-    return child_node.mstate.fromMove
+            return features
 
 
-  def getSuccessor(self, gameState, action):
-    """
-    Finds the next successor which is a grid position (location tuple).
-    """
-    successor = gameState.generateSuccessor(self.index, action)
-    pos = successor.getAgentState(self.index).getPosition()
-    if pos != nearestPoint(pos):
-      # Only half a grid position was covered
-      return successor.generateSuccessor(self.index, action)
-    else:
-      return successor
+    def getCostOfAttackParameter(self, gameState, action):
+            successor = self.getSuccessor(gameState, action)
+            invaders = [a for a in [successor.getAgentState(i) for i in self.getOpponents(successor)] if a.isPacman and a.getPosition()]
+            scaredTime = successor.getAgentState(self.index).scaredTimer
 
+            # If scared, avoid approaching invaders
+            if scaredTime > 0:
+                return {
+                    'numInvaders': -1000,
+                    'onDefense': 100,
+                    'invaderDistance': -5,  # Lower chase weight
+                    'stop': -100,
+                    'reverse': -2,
+                    'distToFoodCenter': 0,
+                    'inDangerousZone': -10000,
+                    'fallback': -200  # Prioritize retreating
+                }
 
-########  End of Monte Carlo Tree Search Simulation
+            # If multiple invaders are present, prioritize food protection
+            if len(invaders) > 1:
+                return {
+                    'numInvaders': -2000,  # Stronger weight, must defend
+                    'onDefense': 200,
+                    'invaderDistance': -15,
+                    'stop': -100,
+                    'reverse': -5,
+                    'distToFoodCenter': -1,
+                    'inDangerousZone': -20000,
+                    'fallback': 0
+                }
 
-  def getIsRed(self):
-    if self.index%2 == 0:
-      return True
-    else:
-      return False
-
-  def evaluateAttackParameters(self, gameState, action):
-
-        features = util.Counter()
-        successor = self.getSuccessor(gameState, action)
-        myState = successor.getAgentState(self.index)
-        myPos = myState.getPosition()
-
-        # Determine if the agent is on defense
-        features['onDefense'] = 0 if myState.isPacman else 1
-
-        # Compute the defensive position (fallback position if all food is eaten)
-        foodCenter = self.getCenterPointOfDefensiveFood(gameState)
-        if gameState.hasWall(*foodCenter):
-            foodCenter = self.nearPosInGrid(gameState, foodCenter)
-        features['distToFoodCenter'] = self.getMazeDistance(myPos, foodCenter)
-
-        # Identify invaders
-        invaders = [a for a in [successor.getAgentState(i) for i in self.getOpponents(successor)] if a.isPacman and a.getPosition()]
-        features['numInvaders'] = len(invaders)
-
-        # Select the highest-priority invader to chase
-        if invaders:
-            self.defenseMode = False  # Switch to chase mode
-            # Select the closest invader
-            closestInvader = min(invaders, key=lambda inv: self.getMazeDistance(myPos, inv.getPosition()))
-            self.targetInvader = closestInvader.getPosition()
-            features['invaderDistance'] = self.getMazeDistance(myPos, self.targetInvader)
-
-            # If the invader is very close, increase defensive pressure
-            if features['invaderDistance'] < 2:
-                features['inDangerousZone'] = 1  # Enemy is too close
-        else:
-            self.defenseMode = True  # No invaders, return to defensive mode
-            self.targetInvader = None
-
-        # Fallback strategy when scared
-        if successor.getAgentState(self.index).scaredTimer > 0:
-            features['fallback'] = features['invaderDistance'] * 2  # Reduce chase weight if scared
-
-        # Avoid meaningless reverses & stopping
-        if action == Directions.STOP:
-            features['stop'] = 1
-        if action == Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]:
-            features['reverse'] = 1
-
-        return features
-
-
-  def getCostOfAttackParameter(self, gameState, action):
-        successor = self.getSuccessor(gameState, action)
-        invaders = [a for a in [successor.getAgentState(i) for i in self.getOpponents(successor)] if a.isPacman and a.getPosition()]
-        scaredTime = successor.getAgentState(self.index).scaredTimer
-
-        # If scared, avoid approaching invaders
-        if scaredTime > 0:
+            # Normal defensive behavior
             return {
                 'numInvaders': -1000,
                 'onDefense': 100,
-                'invaderDistance': -5,  # Lower chase weight
+                'invaderDistance': -12,  # Slightly reduce focus on enemy distance
                 'stop': -100,
-                'reverse': -2,
-                'distToFoodCenter': 0,
-                'inDangerousZone': -10000,
-                'fallback': -200  # Prioritize retreating
-            }
-
-        # If multiple invaders are present, prioritize food protection
-        if len(invaders) > 1:
-            return {
-                'numInvaders': -2000,  # Stronger weight, must defend
-                'onDefense': 200,
-                'invaderDistance': -15,
-                'stop': -100,
-                'reverse': -5,
-                'distToFoodCenter': -1,
-                'inDangerousZone': -20000,
+                'reverse': -3,  # Allow some reversing
+                'distToFoodCenter': -2,  # Adjust defensive position
+                'inDangerousZone': -15000,
                 'fallback': 0
             }
+    def getCenterPointOfDefensiveFood(self, gameState):
+            """
+            Compute the central point of the remaining food as the default defensive position.
+            """
+            homeFoods = self.getFoodYouAreDefending(gameState).asList()
+            if not homeFoods:
+                return self.middle, gameState.data.layout.height // 2
 
-        # Normal defensive behavior
-        return {
-            'numInvaders': -1000,
-            'onDefense': 100,
-            'invaderDistance': -12,  # Slightly reduce focus on enemy distance
-            'stop': -100,
-            'reverse': -3,  # Allow some reversing
-            'distToFoodCenter': -2,  # Adjust defensive position
-            'inDangerousZone': -15000,
-            'fallback': 0
-        }
-  def getCenterPointOfDefensiveFood(self, gameState):
-        """
-        Compute the central point of the remaining food as the default defensive position.
-        """
-        homeFoods = self.getFoodYouAreDefending(gameState).asList()
-        if not homeFoods:
-            return self.middle, gameState.data.layout.height // 2
+            # If food is widely spread, pick the one closest to the boundary
+            minBoundaryFood = min(homeFoods, key=lambda food: abs(food[0] - self.middle))
+            return minBoundaryFood
 
-        # If food is widely spread, pick the one closest to the boundary
-        minBoundaryFood = min(homeFoods, key=lambda food: abs(food[0] - self.middle))
-        return minBoundaryFood
+        # Find the nearest valid position without walls
+    def nearPosInGrid(self, gameState, pos):
+            """
+            Find a nearby position that is not blocked by walls.
+            """
+            neighbors = [(pos[0] - 1, pos[1]), (pos[0] + 1, pos[1]), 
+                        (pos[0], pos[1] - 1), (pos[0], pos[1] + 1)]
+            validPositions = [p for p in neighbors if self.inGrid(p, gameState) and not gameState.hasWall(p[0], p[1])]
+            return random.choice(validPositions) if validPositions else pos
 
-    # Find the nearest valid position without walls
-  def nearPosInGrid(self, gameState, pos):
-        """
-        Find a nearby position that is not blocked by walls.
-        """
-        neighbors = [(pos[0] - 1, pos[1]), (pos[0] + 1, pos[1]), 
-                     (pos[0], pos[1] - 1), (pos[0], pos[1] + 1)]
-        validPositions = [p for p in neighbors if self.inGrid(p, gameState) and not gameState.hasWall(p[0], p[1])]
-        return random.choice(validPositions) if validPositions else pos
-
-  def inGrid(self, pos, gameState):
-        """
-        Ensure that the position is within the valid map boundaries.
-        """
-        return 1 <= pos[0] < gameState.data.layout.width - 1 and \
-               1 <= pos[1] < gameState.data.layout.height - 1
+    def inGrid(self, pos, gameState):
+            """
+            Ensure that the position is within the valid map boundaries.
+            """
+            return 1 <= pos[0] < gameState.data.layout.width - 1 and \
+                1 <= pos[1] < gameState.data.layout.height - 1
 
 
 
-class MState():
-    NUM_TURNS = 5
-    GOAL = 0
-
-    def __init__(self, gameState, index, value=0, move=None, fromMove=None, turn=NUM_TURNS, agent_type='DefensiveReflexAgent'):  
-        self.gameState = gameState
+class Node:
+    def __init__(self, state, index, parent=None, action=None):
+        self.state = state
         self.index = index
-        self.value = value
-        self.turn = turn
-        self.move = move
-        self.fromMove = fromMove
-        self.agent_type = agent_type  # Add agent_type to differentiate between Offensive and Defensive agents
-
-    def setMState(self, gameState, index):
-        self.gameState = gameState
-        self.index = index
-
-    def resetMState(self, gameState, index, value):
-        self.gameState = gameState
-        self.index = index
-        self.value = value
-
-    def deepCopy(self):
-        mstate = MState(self, self.gameState, self.index)
-        mstate.gameState = self.gameState
-        mstate.index = self.index
-        mstate.value = self.value
-        mstate.turn = self.turn
-        mstate.move = self.move
-        mstate.fromMove = self.fromMove
-        mstate.agent_type = self.agent_type  # Copy the agent_type as well
-        return mstate
-
-    def getFromMove(self):
-        return self.fromMove
-  
-    def getMove(self):
-        return self.move
-
-    def next_mstate(self, oNode=None):
-        actions = self.gameState.getLegalActions(self.index)
-        actions = [a for a in actions if a != Directions.STOP]
-        # actions.remove(Directions.STOP)
-        # actions.remove(Directions.REVERSE)
-        if oNode:
-            for n in oNode:
-                if n.mstate.getFromMove() in actions:
-                    actions.remove(n.mstate.getFromMove())  
-        
-
-        # Choose the appropriate agent type based on the state
-        if self.agent_type == 'DefensiveReflexAgent':
-            da = DefensiveReflexAgent(self.index)
-        else:
-            da = OffensiveReflexAgent(self.index)
-
-        da.registerInitialState(self.gameState.deepCopy())
-        
-        nextValues = [da.evaluate(self.gameState, a) for a in actions]
-
-        nextValue = max(nextValues)
-        bestActions = [a for a, v in zip(actions, nextValues) if v == nextValue]
-
-        nextmove = random.choice([x for x in bestActions])
-        self.move = nextmove
-
-        nextGameState = self.gameState.generateSuccessor(self.index, nextmove)
-        nextMState = MState(nextGameState, self.index, nextValue, None, nextmove, self.turn-1)
-        
-        return nextMState
-    
-    def terminal(self):
-        return self.turn == 0
-  
-    def reward(self):
-        opponents = self.gameState.getOpponents(self.gameState.getAgentState(self.index))
-        scared_ghosts = [
-            self.gameState.getAgentState(i) 
-            for i in opponents 
-            if not self.gameState.getAgentState(i).isPacman 
-            and self.gameState.getAgentState(i).scaredTimer > 0
-        ]
-        if scared_ghosts:
-            return self.value + 1000 
-        return self.value
-  
-    def __repr__(self):
-        return f"Value: {self.value}; Move: {self.move}; Agent Type: {self.agent_type}"
-    
-
-class Node():
-    def __init__(self, mstate, parent=None):
+        self.parent = parent
+        self.action = action
+        self.children = []
         self.visits = 1
         self.reward = 0.0
-        self.mstate = mstate
-        self.children = []
-        self.parent = parent  
 
-    def add_child(self, child_mstate):
-        child = Node(child_mstate, self)
-        self.children.append(child)
+    def isTerminal(self):
+        return self.state.isOver()
 
-    def getState(self):
-        return self.mstate.deepCopy()
+    def isFullyExpanded(self):
+        return len(self.children) == len(self.state.getLegalActions(self.index))
 
-    def resetNode(self):
-        self.visits = 0
-        self.reward = 0.0
-        self.children = []
+    def expand(self):
+        """ Expand a new child node. """
+        legal_actions = self.state.getLegalActions(self.index)
+        tried_actions = {child.action for child in self.children} 
+        untried_actions = [a for a in legal_actions if a not in tried_actions]
 
-    def setParentNode(self, node):
-        self.parent = node
+        if not untried_actions:
+            return self  # No expansion possible
 
-    def update(self, reward):
-        self.reward += reward
-        self.visits += 1
+        action = random.choice(untried_actions)
+        next_state = self.state.generateSuccessor(self.index, action)
 
-    def fully_expanded(self):
-        # Get legal actions excluding STOP
-        actions = self.mstate.gameState.getLegalActions(self.mstate.index)
-        actions.remove(Directions.STOP)
-        availableActions = len(actions)
+        for child in self.children:
+            if child.state == next_state:
+                return child
 
-        # If the number of children equals the number of available actions, return True
-        if len(self.children) == availableActions:
-            return True
-        return False
-
-    def __repr__(self):
-        return f"Node; children: {len(self.children)}; visits: {self.visits}; reward: {self.reward:.6f}"
-
-
-def UCTSEARCH(budget, root, index):
-    for _ in range(budget):   
-      front = TREEPOLICY(root, index)
-      reward = DEFAULTPOLICY(front.mstate)
-      BACKUP(root, front, reward)
-    return BESTCHILD(root, 0, index)
-
-def TREEPOLICY(node, index):
-    """
-    Selects and expands nodes in the Monte Carlo Tree Search (MCTS) process.
-    The function explores the tree based on the UCT algorithm.
-    """
-    # If the node is a list, we handle multiple nodes in parallel
-    if isinstance(node, list):  
-        while not node[0].getState().terminal():
-            if not node[0].fully_expanded():  
-                return EXPAND(node[0])  # Expand the node if it's not fully expanded
-            else:
-                node[0] = BESTCHILD(node[0], SCALAR, index)  # Select the best child if expanded
-        return node
-    
-    # If the node is a single node, we continue the process with this node
-    else:
-        while not node.getState().terminal():  # Continue until terminal state is reached
-            if not node.fully_expanded():  
-                return EXPAND(node)  # Expand the node if it's not fully expanded
-            else:
-                node = BESTCHILD(node, SCALAR, index)  # Select the best child if expanded
-        return node
-
-def EXPAND(node):
-    # Create a list of the current node's children
-    children = [child for child in node.children]
-
-    # Generate the next state based on the current state and the children that have already been tried
-    new_mstate = node.mstate.next_mstate(children)
-
-    # Add the new state as a child of the current node
-    node.add_child(new_mstate)
-
-    # Set the parent of the newly added child node
-    node.children[-1].setParentNode(node)
-
-    # Return the newly added child node
-    return node.children[-1]
-
-def BESTCHILD(node, scalar, index):
-    best_score = float('-inf')  # Start with a very low best score
-    best_children = []  # List to store best child nodes
-
-    # Iterate over each child node of the current node
-    for child in node.children:
-        exploit = child.reward / child.visits
-        explore = math.sqrt(math.log(2 * node.visits) / float(child.visits))
-
-        # Total score combines both exploitation and exploration
-        score = exploit + scalar * explore
-
-        # If score is equal to the best score, add the child to the list of best children
-        if score == best_score:
-            best_children.append(child)
-        # If this child's score is better than the best score, update the best score and best children
-        if score > best_score:
-            best_children = [child]  # Reset best children list with this one child
-            best_score = score  # Update best score
-
-    # Randomly choose one of the best children (if multiple have the same score)
-    return random.choice(best_children) if best_children else None
-
-def DEFAULTPOLICY(mstate):
-    rollout_depth = 0
-    while not mstate.terminal() and rollout_depth < SIM_LEVEL:
-        mstate = mstate.next_mstate()
-        rollout_depth += 1
-    return mstate.reward()
-
-def BACKUP(node, reward):
-    while node:
-        node.update(reward)
-        node = node.parent
-
+        child_node = Node(next_state, self.index, parent=self, action=action)
+        self.children.append(child_node)
+        return child_node
