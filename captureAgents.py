@@ -120,7 +120,7 @@ class CaptureAgent(Agent):
 
   def observationFunction(self, gameState):
     " Changing this won't affect pacclient.py, but will affect capture.py "
-    return gameState.makeObservation(self.index)
+    return gameState
 
   def debugDraw(self, cells, color, clear=False):
 
