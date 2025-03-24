@@ -131,7 +131,7 @@ class OffensiveAgent(CaptureAgent):
         if situation == "danger":
             return self.getFeaturesDanger(my_pos, ghost_positions, legal_actions, capsule_list, gameState, action)
         elif situation == "return":
-            return self.getFeaturesReturn(my_pos, ghost_positions, gameState, action)
+            return self.getFeaturesReturn(my_pos, ghost_positions, gameState, action, food_list)
         elif situation == "power":
             return self.getFeaturesPower(my_pos, ghost_positions, food_list, gameState)
         else:
@@ -214,7 +214,7 @@ class OffensiveAgent(CaptureAgent):
        
         return features
 
-    def getFeaturesReturn(self, my_pos, ghost_positions, gameState, action):
+    def getFeaturesReturn(self, my_pos, ghost_positions, gameState, action, food_list):
         features = util.Counter()
         border_positions = self.getFriendlyBorders()
         if border_positions:
@@ -227,7 +227,22 @@ class OffensiveAgent(CaptureAgent):
             if min_ghost_dist <=5:
                 if self.isCycling(action):
                     features["cyclePenalty"] = 1.0
-                    
+            ghost_safe_food = []
+            danger_radius = 3  # Adjust as needed
+
+            if gameState.getAgentState(self.index).isPacman:
+                for food in food_list:
+                    if all(self.getMazeDistance(food, ghost) > danger_radius for ghost in ghost_positions):
+                        ghost_safe_food.append(food)
+            else:
+                ghost_safe_food = food_list[:]  # All food is considered safe when on our own side
+
+            
+            # Prefer ghost-safe food
+            if ghost_safe_food:
+                dist = min([self.getMazeDistance(my_pos, food) for food in ghost_safe_food])
+                features["invFoodDistance"] = 1.0 / (dist + 1)
+            
 
         if self.isBorderGuarded(my_pos, ghost_positions, gameState):
             features["borderGuarded"] = 1.0
@@ -428,8 +443,23 @@ class OffensiveAgent(CaptureAgent):
                 alternate_entries = self.getAlternateEntryPoints(my_pos, ghost_positions, gameState)
                 if alternate_entries:
                     min_entry_dist = max([self.getMazeDistance(my_pos, entry) for entry in alternate_entries])
-                    features["alternateEntry"] = 1.0 / (min_entry_dist + 1)  # Reward for moving toward alternate entry
-            
+                    features["alternateEntry"] = 1.0  / (min_entry_dist + 1)  # Reward for moving toward alternate entry
+                ghost_safe_food = []
+                danger_radius = 3  # Adjust as needed
+
+                if gameState.getAgentState(self.index).isPacman:
+                    for food in food_list:
+                        if all(self.getMazeDistance(food, ghost) > danger_radius for ghost in ghost_positions):
+                            ghost_safe_food.append(food)
+                else:
+                    ghost_safe_food = food_list[:]  # All food is considered safe when on our own side
+
+                
+                # Prefer ghost-safe food
+                if ghost_safe_food:
+                    dist = min([self.getMazeDistance(my_pos, food) for food in ghost_safe_food])
+                    features["invFoodDistance"] = 1.0 / (dist + 1)
+        
         safe_borders = self.getSafeExitBorders(my_pos, ghost_positions, gameState)
         
         if safe_borders:
