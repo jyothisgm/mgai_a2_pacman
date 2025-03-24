@@ -250,7 +250,7 @@ class OffensiveAgent(CaptureAgent):
         # Reward chasing ghosts
         if ghost_positions:
             min_ghost_dist = min([self.getMazeDistance(my_pos, g) for g in ghost_positions])
-            if min_ghost_dist <2:
+            if min_ghost_dist<2:
                 features['chaseGhost'] = 10
             else:
                 features["chaseGhost"] = 1.0 / (min_ghost_dist + 1)
@@ -398,9 +398,7 @@ class OffensiveAgent(CaptureAgent):
                 if alternate_entries:
                     min_entry_dist = max([self.getMazeDistance(my_pos, entry) for entry in alternate_entries])
                     features["alternateEntry"] = 1.0 / (min_entry_dist + 1)
-                
-                
-                
+
         safe_borders = self.getSafeExitBorders(my_pos, ghost_positions, gameState)
         if safe_borders:
             min_border_dist = min([self.getMazeDistance(my_pos, b) for b in safe_borders])
@@ -431,26 +429,7 @@ class OffensiveAgent(CaptureAgent):
                 if alternate_entries:
                     min_entry_dist = max([self.getMazeDistance(my_pos, entry) for entry in alternate_entries])
                     features["alternateEntry"] = 1.0 / (min_entry_dist + 1)  # Reward for moving toward alternate entry
-                ghost_safe_food = []
-                
-            # Only filter food by ghost danger when in enemy territory
-                #in_opponent_territory = (self.red and not self.isRed(my_pos)) or (not self.red and self.isRed(my_pos))
-                in_opponent_territory = self.isInOpponentTerritory(my_pos, gameState)
-
-                danger_radius = 3  # Adjust as needed
-
-                if in_opponent_territory:
-                    for food in food_list:
-                        if all(self.getMazeDistance(food, ghost) > danger_radius for ghost in ghost_positions):
-                            ghost_safe_food.append(food)
-                    # Prefer ghost-safe food
-                    if ghost_safe_food:
-                        dist = min([self.getMazeDistance(my_pos, food) for food in ghost_safe_food])
-                        features["invFoodDistance"] = 1.0 / (dist + 1)
-                        
-                else:
-                    ghost_safe_food = food_list[:]  # All food is considered safe when on our own side
-
+            
         safe_borders = self.getSafeExitBorders(my_pos, ghost_positions, gameState)
         
         if safe_borders:
