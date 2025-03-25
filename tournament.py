@@ -13,7 +13,7 @@ def get_agent_files(folder_path,  leaderboard_f, match_history_f):
     for file in os.listdir(folder_path):
         if file.endswith(".py"):
             agents.append(folder_path+"/"+file) 
-    print(agents)
+    
     all_elo_scores = choose_combination_(agents, leaderboard_f, match_history_f)
     return all_elo_scores
 
@@ -64,8 +64,8 @@ def choose_combination_(agents,   leaderboard_file, match_history_file):
             
             match_history.append({
                     "match_number": match_count,
-                    "red_agent": red,
-                    "blue_agent": blue,
+                    "red_agent":  os.path.basename(red),
+                    "blue_agent": os.path.basename(blue),
                 
                     "elo_red_after": round(elo_scores[red], 2),
                     "elo_blue_after": round(elo_scores[blue], 2)
@@ -77,8 +77,8 @@ def choose_combination_(agents,   leaderboard_file, match_history_file):
             
             match_history.append({
                     "match_number": match_count,
-                    "red_agent": blue,
-                    "blue_agent": red,
+                    "red_agent": os.path.basename(blue),
+                    "blue_agent": os.path.basename(red),
                 
                     "elo_red_after": round(elo_scores[blue], 2),
                     "elo_blue_after": round(elo_scores[red], 2)
@@ -93,7 +93,7 @@ def choose_combination_(agents,   leaderboard_file, match_history_file):
 
         # Build a list of dicts for each agent
     ranking_data = [
-        {"rank": i + 1, "agent": agent, "elo_score": round(score, 2)}
+        {"rank": i + 1, "agent": os.path.basename(agent), "elo_score": round(score, 2)}
         for i, (agent, score) in enumerate(sorted_elo)
     ]
 
@@ -103,6 +103,7 @@ def choose_combination_(agents,   leaderboard_file, match_history_file):
     elo_ranking_df.to_csv(leaderboard_file, index=False)
     print(f"Leaderboard saved to {leaderboard_file}")
 
+    
     
 
 
