@@ -36,11 +36,24 @@ class MCTSNode:
         self.children = []
         self.visits = 0
         self.value = 0.0
-        self.untriedActions = gameState.getLegalActions(agentIndex)
+        self.agentIndex = agentIndex
+        self.untriedActions = self.getLegalMovesRestrictingOpposite(gameState)
         if Directions.STOP in self.untriedActions:
             self.untriedActions.remove(Directions.STOP)
         self.action = action
-        self.agentIndex = agentIndex
+
+    def getLegalMovesRestrictingOpposite(self, gameState):
+        # Get a random legal move, avoiding STOP and preferably not reversing
+        legalMoves = gameState.getLegalActions(self.agentIndex)
+        legalMoves.remove(Directions.STOP)  # Don't consider stopping
+        oppositeDirection = Directions.REVERSE[gameState.getAgentState(self.agentIndex).configuration.direction]
+        if len(legalMoves) == 1:
+            return legalMoves  # Only one option
+        else:
+            # Avoid going back if possible
+            if oppositeDirection in legalMoves:
+                legalMoves.remove(oppositeDirection)
+            return legalMoves  # Choose randomly among remaining legal moves
 
     def uct_select_child(self):
         C = 0.8  # Try tuning this based on reward scale
@@ -50,6 +63,13 @@ class MCTSNode:
             return average_value + exploration
 
         return max(self.children, key=uct_score)
+
+    def print_tree(self, indent=0):
+        indent_str = " " * indent
+        avg_value = self.value / self.visits if self.visits > 0 else 0
+        print(f"{indent_str}- Action: {self.action}, Visits: {self.visits}, AvgValue: {avg_value:.2f}")
+        for child in self.children:
+            child.print_tree(indent + 4)
 
 ##########
 # Agents #
@@ -123,19 +143,20 @@ class BaseStrategyAgent(CaptureAgent):
         intruderDistances = [self.getMazeDistance(currentPosition, a.getPosition()) for a in intruders]
 
         return intruders, intruderDistances
-
-    def getRandomLegalMove(self, gameState):
+    
+    def getLegalMovesRestrictingOpposite(self, gameState):
         # Get a random legal move, avoiding STOP and preferably not reversing
         legalMoves = gameState.getLegalActions(self.index)
         legalMoves.remove(Directions.STOP)  # Don't consider stopping
         oppositeDirection = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
         if len(legalMoves) == 1:
-            return legalMoves[0]  # Only one option
+            return legalMoves  # Only one option
         else:
             # Avoid going back if possible
             if oppositeDirection in legalMoves:
                 legalMoves.remove(oppositeDirection)
-            return random.choice(legalMoves)  # Choose randomly among remaining legal moves
+            return legalMoves  # Choose randomly among remaining legal moves
+
 
     def findLongestDistanceInMap(self, gameState):
         from itertools import combinations
@@ -152,13 +173,10 @@ class BaseStrategyAgent(CaptureAgent):
 
         # 2. Check all unique position pairs
         max_distance = 0
-        point_a = point_b = None
         for pos1, pos2 in combinations(all_positions, 2):
             dist = self.getMazeDistance(pos1, pos2)
             if dist > max_distance:
                 max_distance = dist
-                point_a, point_b = pos1, pos2
-        # print(f"Longest distance is {max_distance} between {point_a} and {point_b}")
         return max_distance
 
 
@@ -179,7 +197,7 @@ class AttackerAgent(BaseStrategyAgent):
 
         self.longestDistanceInMap = 999999999
         self.numberOfSimulations = 80
-        self.mcDepth = 10
+        self.mcDepth = 20
 
     def registerInitialState(self, gameState):
         # Initialize game state data
@@ -192,74 +210,55 @@ class AttackerAgent(BaseStrategyAgent):
         # Calculate border crossing points
         self.borderCrossingPoint = self.calculateBorderCrossingPoints(gameState)
 
-    def calculateFeatures(self, gameState, action):
-        featureMap = util.Counter()
 
+    def calculateFeatures(self, gameState, action):
+        # Create feature counter for evaluating actions
+        featureMap = util.Counter()
         if action != Directions.STOP:
-            successor = self.getSuccessor(gameState, action)
+            successor = self.getSuccessor(gameState, action) 
         else:
             successor = gameState
-
-        nextPosition = successor.getAgentState(self.index).getPosition()
         foodLocations = self.getFood(successor).asList()
-        capsuleLocations = self.getCapsules(successor)
 
-        # ✅ STEP PENALTY — binary, no need to normalize
-        featureMap['step'] = 1.0
+        # Penalty for Each Step
+        featureMap['step'] = -1
 
-        # ✅ SCORE CHANGE — normalize (assume max diff is ~10)
-        scoreDiff = self.getScore(successor) - self.currentScore
-        minUnloadDist = min([self.getMazeDistance(nextPosition, border) for border in self.borderCrossingPoint])
-        unloadFactor = (self.longestDistanceInMap - minUnloadDist) / (self.longestDistanceInMap + 1)
-        featureMap['scoreChange'] = (scoreDiff / 10.0) * unloadFactor  # cap max score diff
-
-        # ✅ IS ATTACKER — binary
-        featureMap['isAttacker'] = 1.0 if successor.getAgentState(self.index).isPacman else 0.0
-
-        # ✅ FOOD DISTANCE — inverse-normalized
-        if foodLocations:
-            minFoodDist = min([self.getMazeDistance(nextPosition, food) for food in foodLocations])
-            featureMap['distanceToFood'] = 1.0 - (minFoodDist / (self.longestDistanceInMap + 1))
+        # Incentive for being a PAcman
+        if successor.getAgentState(self.index).isPacman:
+            featureMap['isAttacker'] = 1
         else:
-            featureMap['distanceToFood'] = 1.0  # No food = perfect
+            featureMap['isAttacker'] = 0
 
-        # ✅ FOOD CAPTURE — normalize relative to 5 max food at once
-        foodCapture = self.foodRemaining - len(foodLocations)
-        featureMap['foodCapture'] = min(foodCapture / 5.0, 1.0) * featureMap['distanceToFood']
+        # Incentive to capture food
+        if foodLocations:
+            foodCapture =  self.foodRemaining - len(foodLocations)
+            featureMap['foodCapture'] = min(foodCapture, 1)
 
-        # ✅ CAPSULE DISTANCE — inverse-normalized
-        featureMap['distanceToCapsule'] = 0.0
-        if capsuleLocations:
-            minCapsuleDist = min([self.getMazeDistance(nextPosition, capsule) for capsule in capsuleLocations])
-            featureMap['distanceToCapsule'] = 1.0 - (minCapsuleDist / (self.longestDistanceInMap + 1))
-        if self.remainingPowerPellets > len(capsuleLocations):
-            featureMap['distanceToCapsule'] = 1.0  # capsule just eaten
+        # Helps in return Home
+        scoreDiff = self.getScore(successor) - self.currentScore
+        featureMap['scoreChange'] = scoreDiff
 
-        # ✅ GHOST DISTANCE — normalized, danger zone < 6 tiles
-        ghosts, ghostDistances = self.getGhosts(successor)
-        featureMap['distanceToGhost'] = 1.0
-        if ghosts:
-            minDist = min(ghostDistances)
-            closestGhost = ghosts[ghostDistances.index(minDist)]
-            if minDist < 6 and closestGhost.scaredTimer < 5:
-                featureMap['distanceToGhost'] = minDist / 6.0  # 0 = danger, 1 = safe
-                featureMap['scoreChange'] = 0  # penalize aggressive moves near ghosts
+        featureMap['capsuleCapture'] = 0
+        if self.remainingPowerPellets > len(self.getCapsules(successor)):
+            featureMap['capsuleCapture'] = 1
 
         return featureMap
 
     def getWeights(self, gameState, action):
+        '''
+        Setting the weights manually after many iterations
+        '''
+        # Adjust weights based on current mode
         weights = {
-            'step': -0.2,                # discourage standing still
-            'distanceToFood': 0.8,       # prefer food proximity
-            'foodCapture': 1.0,          # reward actual food capture
-            'distanceToGhost': 2.0,      # strong ghost avoidance
-            'distanceToCapsule': 1.2,    # prefer capsules if nearby
-            'isAttacker': 0.5,           # slightly prefer being on offense
-            'scoreChange': 2.0,          # highly reward scoring
+            'step': 0.1,
+            'foodCapture': 0.5,
+            'capsuleCapture': 3,
+            'isAttacker': 0.5,
+            'scoreChange': 3,
         }
-
         if self.aggressiveMode:
-            weights['isAttacker'] = 1.5  # boost attack priority
+            # Weights for aggressive mode
+            weights['isAttacker'] = 1
 
         return weights
 
@@ -289,39 +288,42 @@ class AttackerAgent(BaseStrategyAgent):
             # SIMULATION
             totalReward = 0
             depth = 0
+            last_position = state.getAgentState(self.index).getPosition()
+            visited_positions = set(last_position)
             while depth < maxDepth:
-                legalActions = state.getLegalActions(self.index)
-                if Directions.STOP in legalActions:
-                    legalActions.remove(Directions.STOP)
+                legalActions = self.getLegalMovesRestrictingOpposite(state)
                 if not legalActions:
                     break
                 action = random.choice(legalActions)
                 currentStateIsPacman = state.getAgentState(self.index).isPacman
                 state = state.generateSuccessor(self.index, action)
 
+                new_position = state.getAgentState(self.index).getPosition()
                 totalReward += self.evaluate(state, Directions.STOP)
 
-                # ✅ Add your custom logic here
                 if currentStateIsPacman and not state.getAgentState(self.index).isPacman and (self.getScore(state) - self.currentScore):
-                    # Normalize bonus: scaled reward for returning home after scoring
-                    bonus = 1.0 * ((maxDepth - depth) / maxDepth)  # max 1.0 if returned early
-                    totalReward += bonus
+                    totalReward += .2 * (depth)
                     break
-
-                if depth <= 2 and state.getAgentState(self.index).getPosition() == self.homeBase:
-                    # Normalize penalty: small negative reward for coming home too soon
-                    penalty = -1.0 * ((3 - depth) / 3)  # max -1.0 if depth = 0
-                    totalReward += penalty
+                if state.getAgentState(self.index).getPosition() == self.homeBase:
+                    totalReward -= 10
                     break
+                if new_position in visited_positions:
+                    totalReward -= 2  # You can tune this penalty
+                visited_positions.add(state)
+                
                 depth += 1
-
+            totalReward = totalReward / (depth + 1)
             # BACKPROPAGATION
             while node is not None:
                 node.visits += 1
                 node.value += totalReward
                 node = node.parent
 
+        # print("\n==== MCTS Tree ====")
+        # rootNode.print_tree()
+        # print("===================\n")
         bestChild = max(rootNode.children, key=lambda c: c.visits)
+        # print(bestChild.action)
         return bestChild.action
 
     def chooseAction(self, gameState):

@@ -90,7 +90,7 @@ class BaseStrategyAgent(CaptureAgent):
         # else:
         #     midPoint = (crossingPointCount - 1) // 2
         #     self.borderCrossingPoint = [self.borderCrossingPoint[midPoint]] 
-        print("Border Crossing Point: ", self.borderCrossingPoint)  # Debug output
+        # print("Border Crossing Point: ", self.borderCrossingPoint)  # Debug output
 
 
 class AttackerAgent(BaseStrategyAgent):

@@ -183,7 +183,7 @@ class AttackerAgent(BaseStrategyAgent):
 
         # Helps in return Home
         scoreDiff = self.getScore(successor) - self.currentScore
-        minUnloadDist = min([self.getMazeDistance(nextPosition, border) for border in self.borderCrossingPoint])
+        minUnloadDist = self.getMazeDistance(nextPosition, self.homeBase)
 
         featureMap['scoreChange'] = (self.longestDistanceInMap - minUnloadDist) / (self.longestDistanceInMap + 1) * scoreDiff
         
@@ -233,17 +233,17 @@ class AttackerAgent(BaseStrategyAgent):
         '''
         # Adjust weights based on current mode
         weights = {
-            'step': -10,
-            'distanceToFood': 20,
-            'foodCapture': 20,
-            'distanceToGhost': 220,
-            'distanceToCapsule': 200,
-            'isAttacker': 200,
-            'scoreChange': 200,
+            'step': -1,
+            'distanceToFood': 2,
+            'foodCapture': 2,
+            'distanceToGhost': 22,
+            'distanceToCapsule': 20,
+            'isAttacker': 20,
+            'scoreChange': 20,
         }
         if self.aggressiveMode:
             # Weights for aggressive mode
-            weights['isAttacker'] = 400
+            weights['isAttacker'] = 40
 
         return weights
 
@@ -257,10 +257,10 @@ class AttackerAgent(BaseStrategyAgent):
             simulationState = simulationState.generateSuccessor(self.index, next_move)
             value += self.evaluate(simulationState, Directions.STOP)
             if currentState and not simulationState.getAgentState(self.index).isPacman and (self.getScore(simulationState) - self.currentScore):
-                value += 10 * (depth - i)
+                value += 2 * (depth - i)
                 break
             if i <= 2 and simulationState.getAgentState(self.index).getPosition() == self.homeBase:
-                value -= 10000
+                value -= 1000
                 break
         value /= (i + 1)
         return value  # Evaluate final state
@@ -445,7 +445,7 @@ class DefenderAgent(BaseStrategyAgent):
         # Update food state for next comparison
         self.previousFoodState = self.getFoodYouAreDefending(gameState).asList()
         self.determinePatrolPoints(gameState)
-        
+
         # If no target, choose based on food/capsule count
         if self.targetPosition == None:
             if len(self.getFoodYouAreDefending(gameState).asList()) <= 4:
