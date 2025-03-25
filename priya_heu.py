@@ -37,7 +37,7 @@ class OffensiveAgent(CaptureAgent):
         best_action = Directions.STOP
 
         for action in legal_actions:
-            print("Checking for legal action: ", action)
+            # print("Checking for legal action: ", action)
             successor = gameState.generateSuccessor(self.index, action)
             new_pos = successor.getAgentPosition(self.index)
             score = self.evaluateState(
@@ -48,9 +48,9 @@ class OffensiveAgent(CaptureAgent):
                 best_score = score
                 best_action = action
 
-            print(f"Score: {score}")
+            # print(f"Score: {score}")
         
-        print(f"Best action: {best_action} and score : {score}")
+        # print(f"Best action: {best_action} and score : {score}")
         next_state = gameState.generateSuccessor(self.index, best_action)
         self.positionHistory.append(next_state.getAgentPosition(self.index))
         if len(self.positionHistory) > self.historyLimit:
@@ -63,16 +63,16 @@ class OffensiveAgent(CaptureAgent):
         Detects if the agent is oscillating between positions (e.g., South-North-South-North).
         Returns True if a cycle is detected, False otherwise.
         """
-        print("Check for cycling")
-        print(self.positionHistory)
+        # print("Check for cycling")
+        # print(self.positionHistory)
         if len(self.positionHistory) < self.historyLimit:
             return False
 
         # Check if the last few positions are repeating
         unique_positions = set(self.positionHistory)
         if len(unique_positions) <= 2:  # Oscillating between 2 positions
-            print("*****", True)
-            print(unique_positions)
+            # print("*****", True)
+            # print(unique_positions)
             return True
 
         # Check for longer cycles (e.g., A -> B -> C -> A -> B -> C)
@@ -86,7 +86,7 @@ class OffensiveAgent(CaptureAgent):
         Detects if the agent is oscillating between positions (e.g., South-North-South-North).
         Returns True if a cycle is detected, False otherwise.
         """
-        print(True)
+        # print(True)
         if len(self.positionHistory) < 2:  # Need at least 2 positions to detect a cycle
             return False
 
@@ -167,15 +167,15 @@ class OffensiveAgent(CaptureAgent):
         #Increase threshold dynamically if no visible ghosts
         if not ghost_positions:
             if carrying_food >= 5:
-                print("RETURN")
+                # print("RETURN")
                 return "return"
         if carrying_food >= 3:
-            print("RETURN")
+            # print("RETURN")
             return "return"
         if is_powered_up:
-            print("POWER")
+            # print("POWER")
             return "power"
-        print("FORAGE")
+        # print("FORAGE")
         return "forage"
 
     def getFeaturesDanger(self, my_pos, ghost_positions, legal_actions, capsule_list, gameState, action):
