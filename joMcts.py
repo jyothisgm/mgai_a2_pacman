@@ -302,10 +302,10 @@ class AttackerAgent(BaseStrategyAgent):
                 totalReward += self.evaluate(state, Directions.STOP)
 
                 if currentStateIsPacman and not state.getAgentState(self.index).isPacman and (self.getScore(state) - self.currentScore):
-                    totalReward += .2 * (depth)
+                    totalReward += .2 * depth
                     break
                 if state.getAgentState(self.index).getPosition() == self.homeBase:
-                    totalReward -= 10
+                    totalReward -= depth
                     break
                 if new_position in visited_positions:
                     totalReward -= 2  # You can tune this penalty
