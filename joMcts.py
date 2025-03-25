@@ -156,30 +156,6 @@ class BaseStrategyAgent(CaptureAgent):
             if oppositeDirection in legalMoves:
                 legalMoves.remove(oppositeDirection)
             return legalMoves  # Choose randomly among remaining legal moves
-
-
-    def findLongestDistanceInMap(self, gameState):
-        from itertools import combinations
-
-        all_positions = []
-        width = gameState.data.layout.width
-        height = gameState.data.layout.height
-
-        # 1. Collect all legal (non-wall) positions
-        for x in range(width):
-            for y in range(height):
-                if not gameState.hasWall(x, y):
-                    all_positions.append((x, y))
-
-        # 2. Check all unique position pairs
-        max_distance = 0
-        for pos1, pos2 in combinations(all_positions, 2):
-            dist = self.getMazeDistance(pos1, pos2)
-            if dist > max_distance:
-                max_distance = dist
-        return max_distance
-
-
 class AttackerAgent(BaseStrategyAgent):
     '''
     Inheriting properties of Base Class
@@ -195,8 +171,7 @@ class AttackerAgent(BaseStrategyAgent):
         self.remainingPowerPellets = 0  # Count of remaining power pellets
         self.currentScore = 0
 
-        self.longestDistanceInMap = 999999999
-        self.numberOfSimulations = 80
+        self.numberOfSimulations = 50
         self.mcDepth = 20
 
     def registerInitialState(self, gameState):
@@ -206,7 +181,6 @@ class AttackerAgent(BaseStrategyAgent):
         CaptureAgent.registerInitialState(self, gameState)
         # Store home position
         self.homeBase = gameState.getAgentState(self.index).getPosition()
-        self.longestDistanceInMap = self.findLongestDistanceInMap(gameState)
         # Calculate border crossing points
         self.borderCrossingPoint = self.calculateBorderCrossingPoints(gameState)
 
@@ -294,6 +268,7 @@ class AttackerAgent(BaseStrategyAgent):
                 legalActions = self.getLegalMovesRestrictingOpposite(state)
                 if not legalActions:
                     break
+                # action = max(legalActions, key=lambda a: self.evaluate(state, a))
                 action = random.choice(legalActions)
                 currentStateIsPacman = state.getAgentState(self.index).isPacman
                 state = state.generateSuccessor(self.index, action)
@@ -305,11 +280,11 @@ class AttackerAgent(BaseStrategyAgent):
                     totalReward += .2 * depth
                     break
                 if state.getAgentState(self.index).getPosition() == self.homeBase:
-                    totalReward -= depth
+                    totalReward -= .7 * (maxDepth - depth)
                     break
                 if new_position in visited_positions:
-                    totalReward -= 2  # You can tune this penalty
-                visited_positions.add(state)
+                    totalReward -= 1  # You can tune this penalty
+                visited_positions.add(new_position)
                 
                 depth += 1
             totalReward = totalReward / (depth + 1)
@@ -513,7 +488,7 @@ class DefenderAgent(BaseStrategyAgent):
             moveIdx = moveIdx + 1
         # Choose move that minimizes distance to target
         shortestDistance = min(distanceValues)
-        if gameState.getAgentState(self.index).scaredTimer > 1 and shortestDistance < 2:
+        if gameState.getAgentState(self.index).scaredTimer > 3 and shortestDistance < 2:
             bestMoves = [move for move, distance in zip(moveOptions, distanceValues) if distance != shortestDistance]
         else:
             bestMoves = [move for move, distance in zip(moveOptions, distanceValues) if distance == shortestDistance]
