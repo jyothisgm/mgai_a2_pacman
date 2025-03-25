@@ -554,7 +554,7 @@ class DefenderAgent(BaseStrategyAgent):
                 enemyPosition = enemyAgent.getPosition()
                 intruders.append(enemyPosition)
             else:
-                if self.getMazeDistance(enemyAgent.getPosition(), currentPosition) > nearestFood * 2 + 2 or enemyAgent.scaredTimer > 5:
+                if enemyAgent.getPosition() and self.getMazeDistance(enemyAgent.getPosition(), currentPosition) > nearestFood * 2 + 2 or enemyAgent.scaredTimer > 5:
                     attack.append(True)
                 else:
                     attack.append(False)
