@@ -9,7 +9,7 @@ def createTeam(firstIndex, secondIndex, isRed,
 
 class OffensiveAgent(CaptureAgent):
     def registerInitialState(self, gameState):
-        CaptureAgent.registerInitialState(self, gameState)
+        #CaptureAgent.registerInitialState(self, gameState)
        
         CaptureAgent.registerInitialState(self, gameState)
         self.start_position = gameState.getAgentPosition(self.index)
