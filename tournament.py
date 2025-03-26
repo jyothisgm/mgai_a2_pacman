@@ -142,8 +142,8 @@ def main():
     base_dir = os.path.dirname(__file__)
     agents_dir = os.path.join(base_dir, args.folder)
   
-    leaderboard_file = "elo_leaderboard.csv"
-    match_history_file = "elo_match_history.csv"
+    leaderboard_file = "elo_leaderboard_1.csv"
+    match_history_file = "elo_match_history_1.csv"
 
     # Run tournament
     agent_tournament = get_agent_files(agents_dir, leaderboard_file, match_history_file)
