@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/vol/home/s4406559/IDL-11/mgai_a2_pacman/tournament.py", line 146, in <module>
+    main()
+  File "/vol/home/s4406559/IDL-11/mgai_a2_pacman/tournament.py", line 143, in main
+    agent_tournament = get_agent_files(agents_dir, leaderboard_file, match_history_file)
+  File "/vol/home/s4406559/IDL-11/mgai_a2_pacman/tournament.py", line 13, in get_agent_files
+    for file in os.listdir(folder_path):
+FileNotFoundError: [Errno 2] No such file or directory: '/vol/home/s4406559/IDL-11/mgai_a2_pacman/test_files'

@@ -123,7 +123,7 @@ def main():
     # Setup argument parser
     parser = argparse.ArgumentParser(description="Run Pacman agent tournament")
     parser.add_argument(
-        "--folder", type=str, default="test_files",
+        "--folder", type=str, default="tourna_files",
         help="Folder containing agent files"
     )
     # parser.add_argument(
