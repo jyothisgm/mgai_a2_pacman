@@ -47,7 +47,11 @@ def get_elo_score(red, blue, elo_scores, scores_capture):
     
 def choose_combination_(agents,   leaderboard_file, match_history_file):
     
+    pd.DataFrame(columns=["match_number", "red_agent", "blue_agent", "elo_red_after", "elo_blue_after"]).to_csv(match_history_file, index=False)
+    pd.DataFrame(columns=["rank", "agent", "elo_score"]).to_csv(leaderboard_file, index=False)
+
     elo_scores = {agent: 1500 for agent in agents}
+    
     for _ in range(20):
         matchups = list(combinations(agents, 2))
         random.shuffle(matchups)
@@ -62,50 +66,40 @@ def choose_combination_(agents,   leaderboard_file, match_history_file):
             scores = run_match(red, blue, )
             get_elo_score(red, blue, elo_scores, scores)
             
-            match_history.append({
+            match_history = {
                     "match_number": match_count,
                     "red_agent":  os.path.basename(red),
                     "blue_agent": os.path.basename(blue),
                 
                     "elo_red_after": round(elo_scores[red], 2),
                     "elo_blue_after": round(elo_scores[blue], 2)
-                })
+                }
             match_count +=1
             
             scores = run_match(blue, red)
             get_elo_score(blue, red, elo_scores, scores)
-            
-            match_history.append({
+        
+            pd.DataFrame([match_history]).to_csv(match_history_file, mode='a', header=False, index=False)
+
+            match_history = {
                     "match_number": match_count,
                     "red_agent": os.path.basename(blue),
                     "blue_agent": os.path.basename(red),
-                
+
                     "elo_red_after": round(elo_scores[blue], 2),
                     "elo_blue_after": round(elo_scores[red], 2)
-                })
+                }
+            
             match_count +=1
-    df = pd.DataFrame(match_history)
-    
-    df.to_csv(match_history_file, index=False)
-    print(f" Match history saved to {match_history_file}")
-    
-    sorted_elo = sorted(elo_scores.items(), key=lambda x: -x[1])
-
-        # Build a list of dicts for each agent
-    ranking_data = [
-        {"rank": i + 1, "agent": os.path.basename(agent), "elo_score": round(score, 2)}
-        for i, (agent, score) in enumerate(sorted_elo)
-    ]
-
-    # Convert to DataFrame
-    elo_ranking_df = pd.DataFrame(ranking_data)
-    
-    elo_ranking_df.to_csv(leaderboard_file, index=False)
-    print(f"Leaderboard saved to {leaderboard_file}")
-
-    
-    
-
+            pd.DataFrame([match_history]).to_csv(match_history_file, mode='a', header=False, index=False)
+        
+            
+            sorted_elo = sorted(elo_scores.items(), key=lambda x: -x[1])
+            ranking_data = [
+                {"rank": i + 1, "agent": os.path.basename(agent), "elo_score": round(score, 2)}
+                for i, (agent, score) in enumerate(sorted_elo)
+            ]
+            pd.DataFrame(ranking_data).to_csv(leaderboard_file, index=False)
 
 def run_match(red_file, blue_file):
     # Build command-line-like args
@@ -129,7 +123,7 @@ def main():
     # Setup argument parser
     parser = argparse.ArgumentParser(description="Run Pacman agent tournament")
     parser.add_argument(
-        "--folder", type=str, default="tourna_files",
+        "--folder", type=str, default="test_files",
         help="Folder containing agent files"
     )
     # parser.add_argument(
@@ -142,8 +136,8 @@ def main():
     base_dir = os.path.dirname(__file__)
     agents_dir = os.path.join(base_dir, args.folder)
   
-    leaderboard_file = "elo_leaderboard_1.csv"
-    match_history_file = "elo_match_history_1.csv"
+    leaderboard_file = "elo_leaderboard.csv"
+    match_history_file = "elo_match_history.csv"
 
     # Run tournament
     agent_tournament = get_agent_files(agents_dir, leaderboard_file, match_history_file)
