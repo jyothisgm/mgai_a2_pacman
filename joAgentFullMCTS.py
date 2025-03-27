@@ -317,7 +317,8 @@ class AttackerAgent(BaseStrategyAgent):
 
     def runMCTS(self, rootState, numSimulations=80, maxDepth=10):
         rootNode = MCTSNode(rootState, agentIndex=self.index)
-        for _ in range(numSimulations):
+        start_time = time.time()
+        while time.time() - start_time < 0.2:
             node = rootNode
             state = rootState.deepCopy()
             
@@ -549,7 +550,9 @@ class DefenderAgent(BaseStrategyAgent):
     def runMCTS(self, rootState, numSimulations=80, maxDepth=10):
         rootNode = MCTSNode(rootState, agentIndex=self.index)
         rootIntruder, _ = self.getIntruders(rootState)
-        for i in range(numSimulations):
+        
+        start_time = time.time()
+        while time.time() - start_time < 0.2:
             node = rootNode
             state = rootState.deepCopy()
 
