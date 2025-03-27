@@ -83,7 +83,6 @@ class BaseStrategyAgent(CaptureAgent):
         CaptureAgent.__init__(self, index)
         self.discountRate = 0.90
         self.homeBase = []
-        self.maxTime = 0.7 # 70ms
 
     def registerInitialState(self, gameState):
         # Initialize game state data
@@ -106,7 +105,7 @@ class BaseStrategyAgent(CaptureAgent):
         else:
             return successor
 
-    def evaluate(self, gameState, action):
+    def evaluate(self, gameState, action): 
         # Evaluate an action by calculating features and multiplying by weights
         featureMap = self.calculateFeatures(gameState, action)
         weightMap = self.getWeights(gameState, action)
@@ -160,7 +159,7 @@ class BaseStrategyAgent(CaptureAgent):
         intruderDistances = [self.getMazeDistance(currentPosition, a) for a in intruders]
 
         return intruders, intruderDistances
-
+    
     def getLegalMovesRestrictingOpposite(self, gameState):
         # Get a random legal move, avoiding STOP and preferably not reversing
         legalMoves = gameState.getLegalActions(self.index)
@@ -210,14 +209,15 @@ class AttackerAgent(BaseStrategyAgent):
         self.remainingPowerPellets = 0  # Count of remaining power pellets
         self.currentScore = 0
 
-        self.numberOfSimulations = 20
-        self.mcDepth = 5
+        self.numberOfSimulations = 80
+        self.mcDepth = 20
+
 
     def calculateFeatures(self, gameState, action):
         # Create feature counter for evaluating actions
         featureMap = util.Counter()
         if action != Directions.STOP:
-            successor = self.getSuccessor(gameState, action)
+            successor = self.getSuccessor(gameState, action) 
         else:
             successor = gameState
         foodLocations = self.getFood(successor).asList()
@@ -225,47 +225,25 @@ class AttackerAgent(BaseStrategyAgent):
         # Penalty for Each Step
         featureMap['step'] = -1
 
-        # Incentive for being a Pacman
+        # Incentive for being a PAcman
         if successor.getAgentState(self.index).isPacman:
             featureMap['isAttacker'] = 1
         else:
             featureMap['isAttacker'] = 0
 
-        currentPosition = successor.getAgentPosition(self.index)
-        foodDists = [self.getMazeDistance(currentPosition, a) for a in foodLocations]
-        borderDists = [self.getMazeDistance(currentPosition, a) for a in self.borderCrossingPoint]
-        foodCapture = successor.getAgentState(self.index).numCarrying
         # Incentive to capture food
-        featureMap['foodCapture'] = min(foodCapture, 2)
-        totalFoodDists = 0
-        for each_food in foodDists:
-            totalFoodDists += ((self.maxDistance - each_food)/self.maxDistance)**5
-
-        if len(foodDists):
-            featureMap['distanceToFood'] = totalFoodDists / len(foodDists)
-
-        totalBorderDists = 0
-        for each_border in borderDists:
-            totalBorderDists += ((self.maxDistance - each_border)/self.maxDistance)**5
+        if foodLocations:
+            foodCapture = gameState.getAgentState(self.index).numCarrying
+            featureMap['foodCapture'] = min(foodCapture, 1)
 
         # Helps in return Home
-        # if min(borderDists) > self.mcDepth:
-        featureMap['scoreChange'] = ((self.maxDistance - min(borderDists))/self.maxDistance)**5 * foodCapture
-        # else:
-        #     featureMap['scoreChange'] = self.getScore(successor) - self.currentScore
+        scoreDiff = self.getScore(successor) - self.currentScore
+        featureMap['scoreChange'] = scoreDiff
 
         featureMap['capsuleCapture'] = 0
         if self.remainingPowerPellets > len(self.getCapsules(successor)):
             featureMap['capsuleCapture'] = 1
 
-        enemies = [gameState.getAgentState(i) for i in self.getOpponents(gameState)]
-        intruders = [a.getPosition() for a in enemies if a.isPacman and a.getPosition() != None]
-        if successor.getAgentState(self.index).scaredTimer:
-            featureMap['intruder'] = -1
-        if successor.getAgentState(self.index).getPosition() in intruders:
-            featureMap['intruder'] = 1
-        if intruders and successor.getAgentState(self.index).getPosition() in self.getCapsulesYouAreDefending(gameState):
-            featureMap['intruder'] = 2
         return featureMap
 
     def getWeights(self, gameState, action):
@@ -274,57 +252,25 @@ class AttackerAgent(BaseStrategyAgent):
         '''
         # Adjust weights based on current mode
         weights = {
-            'step': 0.1,
+            'step': 0.01,
             'foodCapture': 0.5,
             'capsuleCapture': 3,
             'isAttacker': 0.5,
-            'scoreChange': 7,
-            'intruder': 3,
-            'distanceToFood': 5
+            'scoreChange': 3,
         }
         if self.aggressiveMode:
             # Weights for aggressive mode
             weights['isAttacker'] = 1
-        ghosts, ghostDist = self.getGhosts(gameState)
-        if ghosts and ghosts[ghostDist.index(min(ghostDist))].scaredTimer:
-            weights['isAttacker'] = 1
-            weights['scoreChange'] = 4
-            weights['distanceToFood'] = 7
 
         return weights
 
-    def chooseAction(self, gameState):
-        currentPosition = gameState.getAgentState(self.index).getPosition()
-        self.remainingPowerPellets = len(self.getCapsules(gameState))
-        self.currentScore = self.getScore(gameState)
-        self.attack = True
-
-        # Aggressive Mode
-        if self.homeBase in currentPosition or self.foodRemaining != len(self.getFood(gameState).asList()):
-            self.stuckCounter = 0
-            self.foodRemaining = len(self.getFood(gameState).asList())
-            self.aggressiveMode = False
-        else:
-            self.stuckCounter += 1
-            if self.stuckCounter > 20:
-                self.aggressiveMode = True
-
-        # Run MCTS instead of plain simulation
-        bestMove = self.runMCTS(gameState, numSimulations=self.numberOfSimulations, maxDepth=self.mcDepth)
-
-        # print(f"CurrentPos: {currentPosition} BestMove: {bestMove}")
-        return bestMove
 
     def runMCTS(self, rootState, numSimulations=80, maxDepth=10):
         rootNode = MCTSNode(rootState, agentIndex=self.index)
-        start_time = time.time()
-        while time.time() - start_time < self.maxTime:
+
+        for _ in range(numSimulations):
             node = rootNode
             state = rootState.deepCopy()
-
-            totalReward = 0
-            depth = 0
-            simulate = True
 
             # SELECTION
             while node.untriedActions == [] and node.children:
@@ -334,60 +280,43 @@ class AttackerAgent(BaseStrategyAgent):
             # EXPANSION
             if node.untriedActions:
                 action = random.choice(node.untriedActions)
-                statePos = state.getAgentState(self.index).getPosition()
-                if self.remainingPowerPellets > len(self.getCapsules(state)):
-                    totalReward += 20
-                    simulate = False
-                if statePos in self.homeBase:
-                    totalReward -= 60
-                    simulate = False
-                if self.getScore(state) - self.currentScore:
-                    totalReward += 10 * (self.getScore(state) - self.currentScore)
-                    simulate = False
-                if simulate:
-                    node.untriedActions.remove(action)
-                    nextState = state.generateSuccessor(self.index, action)
-                    childNode = MCTSNode(nextState, parent=node, action=action, agentIndex=self.index)
-                    node.children.append(childNode)
-                    node = childNode
-                    state = nextState
-                    totalReward = 0
-                    depth = 0
-                else:
-                    node.untriedActions = []
+                node.untriedActions.remove(action)
+                nextState = state.generateSuccessor(self.index, action)
+                childNode = MCTSNode(nextState, parent=node, action=action, agentIndex=self.index)
+                node.children.append(childNode)
+                node = childNode
+                state = nextState
 
             # SIMULATION
+            totalReward = 0
+            depth = 0
             last_position = state.getAgentState(self.index).getPosition()
             visited_positions = set(last_position)
-            while simulate and depth < maxDepth:
+            while depth < maxDepth:
                 legalActions = self.getLegalMovesRestrictingOpposite(state)
                 if not legalActions:
                     break
                 action = max(legalActions, key=lambda a: self.evaluate(state, a))
-                # action = random.choice(legalActions)
+                action = random.choice(legalActions)
                 state = state.generateSuccessor(self.index, action)
 
-                newPosition = state.getAgentState(self.index).getPosition()
-                depth += 1
+                new_position = state.getAgentState(self.index).getPosition()
+                totalReward += self.evaluate(state, Directions.STOP)
 
-                reward = (self.discountRate)**depth * self.evaluate(state, Directions.STOP)
-                totalReward += reward
-
-                if self.remainingPowerPellets > len(self.getCapsules(state)):
-                    totalReward += 20 * (self.discountRate)**(depth)
-                    break
                 if self.getScore(state) - self.currentScore:
-                    totalReward += 10 * (self.discountRate)**(depth) * (self.getScore(state) - self.currentScore)
+                    totalReward += .2 * (maxDepth - depth)
                     break
-                if newPosition in self.homeBase:
-                    totalReward -= 60 * (self.discountRate)**(depth)
+                if state.getAgentState(self.index).getPosition() in self.homeBase:
+                    totalReward -= .7 * (maxDepth - depth)
                     break
-                if newPosition in visited_positions:
-                    totalReward -= .1  # You can tune this penalty
-
-            totalReward = totalReward / max(depth, 1)
-
+                if new_position in visited_positions:
+                    totalReward -= 1  # You can tune this penalty
+                visited_positions.add(new_position)
+                
+                depth += 1
+            totalReward = totalReward / (depth + 1)
             # BACKPROPAGATION
+            
             counter = 0
             while node is not None:
                 node.visits += 1
@@ -398,12 +327,34 @@ class AttackerAgent(BaseStrategyAgent):
         # print("\n==== MCTS Tree ====")
         # rootNode.print_tree()
         # print("===================\n")
-        if rootNode.children:
-            bestChild = max(rootNode.children, key=lambda c: c.value/c.visits)
-        else:
-            return random.choice(rootState.getLegalActions(self.index))
+        bestChild = max(rootNode.children, key=lambda c: c.visits)
         # print(bestChild.action)
         return bestChild.action
+
+    def chooseAction(self, gameState):
+        currentPosition = gameState.getAgentState(self.index).getPosition()
+        self.remainingPowerPellets = len(self.getCapsules(gameState))
+        self.currentScore = self.getScore(gameState)
+
+        if self.foodRemaining == len(self.getFood(gameState).asList()):
+            self.stuckCounter += 1
+        else:
+            self.stuckCounter = 0
+            self.foodRemaining = len(self.getFood(gameState).asList())
+
+        if self.homeBase in currentPosition:
+            self.stuckCounter = 0  # Reset counter if agent has been captured
+
+        if self.stuckCounter > 20:
+            self.aggressiveMode = True
+        else:
+            self.aggressiveMode = False
+
+        # Run MCTS instead of plain simulation
+        bestMove = self.runMCTS(gameState, numSimulations=self.numberOfSimulations, maxDepth=self.mcDepth)
+
+        # print(f"CurrentPos: {currentPosition} BestMove: {bestMove}")
+        return bestMove
 
 
 class DefenderAgent(BaseStrategyAgent):
@@ -428,7 +379,7 @@ class DefenderAgent(BaseStrategyAgent):
         for yCoord in range(1, gameState.data.layout.height - 1):
             if not gameState.hasWall(borderX, yCoord):
                 self.patrolPositions.append((borderX, yCoord))
-
+        
         # Focus on patrolling near the closest food point near border
         criticalDefensePoints = self.getFoodYouAreDefending(gameState).asList() + self.getCapsulesYouAreDefending(gameState)
         minDefenseDistance = 999999
@@ -447,7 +398,7 @@ class DefenderAgent(BaseStrategyAgent):
         # Main decision method for defender
         currentPosition = gameState.getAgentPosition(self.index)
         self.patrolPositions = self.determinePatrolPoints(gameState)
-
+        
         self.remainingPowerPellets = len(self.getCapsules(gameState))
         self.currentScore = self.getScore(gameState)
 
@@ -469,7 +420,7 @@ class DefenderAgent(BaseStrategyAgent):
             self.chase = False
             self.attack = False
             self.targets = self.patrolPositions
-
+        
         bestMove = self.runMCTS(gameState, numSimulations=self.numberOfSimulations, maxDepth=self.mcDepth)
         return bestMove
 
@@ -477,7 +428,7 @@ class DefenderAgent(BaseStrategyAgent):
         # Create feature counter for evaluating actions
         featureMap = util.Counter()
         if action != Directions.STOP:
-            successor = self.getSuccessor(gameState, action)
+            successor = self.getSuccessor(gameState, action) 
         else:
             successor = gameState
         intruders, intruderDist = self.getIntruders(successor)
@@ -489,7 +440,7 @@ class DefenderAgent(BaseStrategyAgent):
 
         # Penalty for Each Step
         featureMap['step'] = -1
-
+        
         # Attack Intruders
         if self.chase:
             featureMap['intruder'] = 1
@@ -515,9 +466,9 @@ class DefenderAgent(BaseStrategyAgent):
             featureMap['returnHome'] = ((self.maxDistance - minBorderDist)/self.maxDistance)**5 * (foodCapture + scoreDiff)
 
             featureMap['capsuleCapture'] = 0
-            # capsuleAttackDist = [self.getMazeDistance(currentPosition, a) for a in self.getCapsules(successor)]
-            # if capsuleAttackDist:
-            #     featureMap['capsuleCapture'] = ((self.maxDistance - min(capsuleAttackDist))/self.maxDistance)**5
+            capsuleAttackDist = [self.getMazeDistance(currentPosition, a) for a in self.getCapsules(successor)]
+            if capsuleAttackDist:
+                featureMap['capsuleCapture'] = ((self.maxDistance - min(capsuleAttackDist))/self.maxDistance)**5
             featureMap['defend'] = 0
         else:
             if successor.getAgentState(self.index).isPacman:
@@ -550,9 +501,7 @@ class DefenderAgent(BaseStrategyAgent):
     def runMCTS(self, rootState, numSimulations=80, maxDepth=10):
         rootNode = MCTSNode(rootState, agentIndex=self.index)
         rootIntruder, _ = self.getIntruders(rootState)
-
-        start_time = time.time()
-        while time.time() - start_time < self.maxTime:
+        for i in range(numSimulations):
             node = rootNode
             state = rootState.deepCopy()
 
@@ -562,15 +511,16 @@ class DefenderAgent(BaseStrategyAgent):
                 state = state.generateSuccessor(self.index, node.action)
 
             simulate = True
-
+            
             totalReward = 0
             depth = 0
             # EXPANSION
             if node.untriedActions:
                 totalReward = self.evaluate(state, Directions.STOP)
-                statePos = state.getAgentState(self.index).getPosition()
-                if self.remainingPowerPellets > len(self.getCapsules(state)):
-                    totalReward += 20
+                statePos = state.getAgentState(self.index).getPosition() 
+                capsuleAttackDist = [self.getMazeDistance(statePos, a) for a in self.getCapsules(state)]
+                if self.remainingPowerPellets > len(capsuleAttackDist):
+                    totalReward += 20 * (self.discountRate)**(depth)
                     simulate = False
                 if statePos in self.homeBase:
                     totalReward -= 40
@@ -583,7 +533,7 @@ class DefenderAgent(BaseStrategyAgent):
                     totalReward += 40
                     simulate = False
                 if self.getScore(state) - self.currentScore:
-                    totalReward += 40 * (self.getScore(state) - self.currentScore)
+                    totalReward += 40 * (self.discountRate)**(depth) * self.getScore(state) - self.currentScore
                     simulate = False
                 if simulate:
                     action = random.choice(node.untriedActions)
@@ -619,7 +569,7 @@ class DefenderAgent(BaseStrategyAgent):
                     totalReward += 20 * (self.discountRate)**(depth)
                     break
                 if self.getScore(state) - self.currentScore:
-                    totalReward += 40 * (self.discountRate)**(depth) * (self.getScore(state) - self.currentScore)
+                    totalReward += 40 * (self.discountRate)**(depth) * self.getScore(state) - self.currentScore
                     break
                 if state.getAgentState(self.index).getPosition() in self.homeBase:
                     totalReward -= 30 * (self.discountRate)**(depth)
@@ -643,7 +593,7 @@ class DefenderAgent(BaseStrategyAgent):
                 node.value += (self.discountRate ** counter) * totalReward
                 node = node.parent
                 counter += 1
-
+        
         if rootNode.children:
             bestChild = max(rootNode.children, key=lambda c: c.value/c.visits)
         else:
