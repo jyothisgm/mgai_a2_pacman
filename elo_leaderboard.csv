@@ -1,1 +1,9 @@
 rank,agent,elo_score
+1,joAgent2.py,1750.73
+2,HeuristicTeam.py,1667.42
+3,joMcts.py,1592.9
+4,_joMcts_jia_.py,1554.3
+5,joAgent.py,1526.38
+6,priya_heu.py,1487.36
+7,priya_heu_2.py,1364.87
+8,baselineTeam.py,1056.04
