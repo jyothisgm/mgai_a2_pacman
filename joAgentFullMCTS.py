@@ -83,6 +83,7 @@ class BaseStrategyAgent(CaptureAgent):
         CaptureAgent.__init__(self, index)
         self.discountRate = 0.90
         self.homeBase = []
+        self.maxTime = 0.7 # 70ms
 
     def registerInitialState(self, gameState):
         # Initialize game state data
@@ -318,7 +319,7 @@ class AttackerAgent(BaseStrategyAgent):
     def runMCTS(self, rootState, numSimulations=80, maxDepth=10):
         rootNode = MCTSNode(rootState, agentIndex=self.index)
         start_time = time.time()
-        while time.time() - start_time < 0.2:
+        while time.time() - start_time < self.maxTime:
             node = rootNode
             state = rootState.deepCopy()
             
@@ -552,7 +553,7 @@ class DefenderAgent(BaseStrategyAgent):
         rootIntruder, _ = self.getIntruders(rootState)
         
         start_time = time.time()
-        while time.time() - start_time < 0.2:
+        while time.time() - start_time < self.maxTime:
             node = rootNode
             state = rootState.deepCopy()
 
