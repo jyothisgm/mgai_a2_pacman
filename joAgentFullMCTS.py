@@ -8,8 +8,8 @@ EXPLORE_RATE = math.sqrt(2.0)
 NUM_SIM = 500
 REWARD_DISCOUNT = 0.8
 DEPTH = 10
-MAX_TIME = 0.7 # 70ms
-EPSILON = 0.2
+MAX_TIME = 0.2 # 70ms
+EPSILON = 0.02
 
 #####################
 ## Team Pac-Champs ##
@@ -278,13 +278,14 @@ class AttackerAgent(BaseStrategyAgent):
     def __init__(self, index):
         # Initialize the agent with default values
         BaseStrategyAgent.__init__(self, index)
-        self.stuckCounter = 0  # Counter to track if agent is stuck
+        self.stuckCounter = 1  # Counter to track if agent is stuck
         self.aggressiveMode = False  # Flag for aggressive behavior
         self.returnHome = False  # Flag to return home after collecting food
         self.borderCrossingPoint = []  # Points to cross into enemy territory
         self.isStuck = False  # Flag to indicate if agent is stuck
         self.remainingPowerPellets = 0  # Count of remaining power pellets
         self.currentScore = 0
+        self.discardedFoodPosition = []
 
     def calculateFeatures(self, gameState, action):
         # Create feature counter for evaluating actions
@@ -294,6 +295,9 @@ class AttackerAgent(BaseStrategyAgent):
         else:
             successor = gameState
         foodLocations = self.getFood(successor).asList()
+        foodCapture = successor.getAgentState(self.index).numCarrying
+        if not foodCapture:
+            foodLocations = [item for item in foodLocations if item not in self.discardedFoodPosition]
 
         # Penalty for Each Step
         featureMap['step'] = -1
@@ -307,16 +311,15 @@ class AttackerAgent(BaseStrategyAgent):
         currentPosition = successor.getAgentPosition(self.index)
         foodDists = [self.getMazeDistance(currentPosition, a) for a in foodLocations]
         borderDists = [self.getMazeDistance(currentPosition, a) for a in self.borderCrossingPoint]
-        foodCapture = successor.getAgentState(self.index).numCarrying
+
         # Incentive to capture food
         featureMap['foodCapture'] = min(foodCapture, 2)
-        totalFoodDists = 0
-        for each_food in foodDists:
-            totalFoodDists += ((self.maxDistance - each_food)/self.maxDistance)**5
+        # totalFoodDists = 0
+        # for each_food in foodDists:
+        # foodDists += ((self.maxDistance - min(foodDists))/self.maxDistance)**5
 
         if len(foodDists):
-            featureMap['distanceToFood'] = totalFoodDists / len(foodDists)
-
+            featureMap['distanceToFood'] = ((self.maxDistance - min(foodDists))/self.maxDistance)**5
         totalBorderDists = 0
         for each_border in borderDists:
             totalBorderDists += ((self.maxDistance - each_border)/self.maxDistance)**5
@@ -345,20 +348,20 @@ class AttackerAgent(BaseStrategyAgent):
         weights = {
             'step': 0.5,
             'foodCapture': 10,
-            'capsuleCapture': 10,
-            'isAttacker': 25,
+            'capsuleCapture': 25,
+            'isAttacker': 15,
             'scoreChange': 10,
             'intruder': 4,
-            'distanceToFood': 3
+            'distanceToFood': 7
         }
         if self.aggressiveMode:
             # Weights for aggressive mode
-            weights['isAttacker'] = 35
+            weights['isAttacker'] = 25
         ghosts, ghostDist = self.getGhosts(gameState)
         if not ghosts or ghosts[ghostDist.index(min(ghostDist))].scaredTimer > 2:
-            weights['isAttacker'] = 50
+            weights['isAttacker'] = 40
             weights['scoreChange'] = 3
-            weights['distanceToFood'] = 5
+            weights['foodCapture'] = 30
 
         return weights
 
@@ -367,17 +370,21 @@ class AttackerAgent(BaseStrategyAgent):
         self.remainingPowerPellets = len(self.getCapsules(gameState))
         self.currentScore = self.getScore(gameState)
         self.attack = True
-        totalFood = len(self.getFood(gameState).asList())
+        allFood = self.getFood(gameState).asList()
+        foodDist = [self.getMazeDistance(currentPosition, a) for a in allFood]
 
         # Aggressive Mode
-        if self.homeBase in currentPosition or self.foodRemaining != totalFood:
-            self.stuckCounter = 0
-            self.foodRemaining = totalFood
+        if self.homeBase in currentPosition or self.foodRemaining != len(allFood):
+            self.stuckCounter = 1
+            self.foodRemaining = len(allFood)
             self.aggressiveMode = False
+            self.discardedFoodPosition = []
         else:
             self.stuckCounter += 1
             if self.stuckCounter > 20:
                 self.aggressiveMode = True
+            if self.stuckCounter % 5 == 0:
+                self.discardedFoodPosition.append(allFood[foodDist.index(min(foodDist))])
 
         # Run MCTS instead of plain simulation
         bestMove = self.runMCTS(gameState, numSimulations=self.numberOfSimulations, maxDepth=self.mcDepth)
@@ -460,7 +467,7 @@ class AttackerAgent(BaseStrategyAgent):
 
                 # Reset to home base
                 if newPosition in self.homeBase or (rootIsPacman and self.canBeCapturedInNSteps(state, depthCounter+1)):
-                    totalReward -= 70 * (self.discountRate)**(depth)
+                    totalReward -= 55 * (self.discountRate)**(depth)
                     break
 
             totalReward = totalReward / max(depth, 1)
@@ -494,7 +501,9 @@ class DefenderAgent(BaseStrategyAgent):
         # Calculate border position
         borderX = (gameState.data.layout.width - 2) // 2
         if not self.red:
-            borderX += 1  # Adjust for blue team
+            borderX += 2  # Adjust for blue team
+        else:
+            borderX -= 1
         self.patrolPositions = []
         # Find all positions along border that aren't walls
         for yCoord in range(1, gameState.data.layout.height - 1):
@@ -621,17 +630,20 @@ class DefenderAgent(BaseStrategyAgent):
     def runMCTS(self, rootState, numSimulations=80, maxDepth=10):
         rootNode = MCTSNode(rootState, agentIndex=self.index)
         rootIntruder, _ = self.getIntruders(rootState)
+        rootIsPacman = rootState.getAgentState(self.index).isPacman
 
         startTime = time.time()
         simulations = 0
         while time.time() - startTime < self.maxTime and simulations < numSimulations:
             node = rootNode
             state = rootState.deepCopy()
+            depthCounter = 0
 
             # SELECTION
             while node.untriedActions == [] and node.children:
                 node = node.uct_select_child()
                 state = state.generateSuccessor(self.index, node.action)
+                depthCounter +=1
 
             # EXPANSION
             if node.untriedActions:
@@ -669,6 +681,7 @@ class DefenderAgent(BaseStrategyAgent):
                     action = max(legalActions, key=lambda a: self.evaluate(state, a))
                 state = state.generateSuccessor(self.index, action)
                 newPosition = state.getAgentState(self.index).getPosition()
+                depthCounter +=1
                 depth += 1
 
                 # Get reward for new state
@@ -692,7 +705,7 @@ class DefenderAgent(BaseStrategyAgent):
                     break
                 
                 # Reset to home base
-                if newPosition in self.homeBase:
+                if newPosition in self.homeBase or (rootIsPacman and self.canBeCapturedInNSteps(state, depthCounter+1)):
                     totalReward -= 30 * (self.discountRate)**(depth)
                     break
                 
