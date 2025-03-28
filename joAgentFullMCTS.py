@@ -51,21 +51,21 @@ class MCTSNode:
         legalMoves.remove(Directions.STOP)  # Don't consider stopping\
         return legalMoves  # Choose randomly among remaining legal moves
 
-    def uct_select_child(self):
+    def uctSelectChild(self):
         C = EXPLORE_RATE  # Try tuning this based on reward scale
-        def uct_score(child):
-            average_value = child.value / (child.visits + 1e-4)
+        def uctScore(child):
+            averageValue = child.value / (child.visits + 1e-4)
             exploration = C * math.sqrt(math.log(self.visits + 1) / (child.visits + 1e-4))
-            return average_value + exploration
+            return averageValue + exploration
 
-        return max(self.children, key=uct_score)
+        return max(self.children, key=uctScore)
 
-    def print_tree(self, indent=0):
-        indent_str = " " * indent
-        avg_value = self.value / self.visits if self.visits > 0 else 0
-        print(f"{indent_str}- Action: {self.action or None}, Visits: {self.visits}, AvgValue: {avg_value:.2f}")
+    def printTree(self, indent=0):
+        indentStr = " " * indent
+        avgValue = self.value / self.visits if self.visits > 0 else 0
+        print(f"{indentStr}- Action: {self.action or None}, Visits: {self.visits}, AvgValue: {avgValue:.2f}")
         for child in self.children:
-            child.print_tree(indent + 4)
+            child.printTree(indent + 4)
 
 ##########
 # Agents #
@@ -182,7 +182,7 @@ class BaseStrategyAgent(CaptureAgent):
     def findLongestDistanceInMap(self, gameState):
         from itertools import combinations
 
-        all_positions = []
+        allPositions = []
         width = gameState.data.layout.width
         height = gameState.data.layout.height
 
@@ -190,15 +190,15 @@ class BaseStrategyAgent(CaptureAgent):
         for x in range(width):
             for y in range(height):
                 if not gameState.hasWall(x, y):
-                    all_positions.append((x, y))
+                    allPositions.append((x, y))
 
         # 2. Check all unique position pairs
-        max_distance = 0
-        for pos1, pos2 in combinations(all_positions, 2):
+        maxDistance = 0
+        for pos1, pos2 in combinations(allPositions, 2):
             dist = self.getMazeDistance(pos1, pos2)
-            if dist > max_distance:
-                max_distance = dist
-        return max_distance
+            if dist > maxDistance:
+                maxDistance = dist
+        return maxDistance
 
     def updateGhostsTowardPacman(self, gameState, temperature=1.0):
         """
@@ -232,9 +232,9 @@ class BaseStrategyAgent(CaptureAgent):
 
             # Convert distances to a probability distribution (lower distance = higher prob)
             # We invert and scale using a temperature parameter
-            exp_weights = [math.exp(-d / temperature) for d in distances]
-            total = sum(exp_weights)
-            probs = [w / total for w in exp_weights]
+            expWeights = [math.exp(-d / temperature) for d in distances]
+            total = sum(expWeights)
+            probs = [w / total for w in expWeights]
 
             # Sample based on weighted probability
             chosenAction = random.choices(actions, weights=probs, k=1)[0]
@@ -315,14 +315,14 @@ class AttackerAgent(BaseStrategyAgent):
         # Incentive to capture food
         featureMap['foodCapture'] = min(foodCapture, 2)
         # totalFoodDists = 0
-        # for each_food in foodDists:
+        # for eachFood in foodDists:
         # foodDists += ((self.maxDistance - min(foodDists))/self.maxDistance)**5
 
         if len(foodDists):
             featureMap['distanceToFood'] = ((self.maxDistance - min(foodDists))/self.maxDistance)**5
         totalBorderDists = 0
-        for each_border in borderDists:
-            totalBorderDists += ((self.maxDistance - each_border)/self.maxDistance)**5
+        for eachBorder in borderDists:
+            totalBorderDists += ((self.maxDistance - eachBorder)/self.maxDistance)**5
 
         featureMap['scoreChange'] = ((self.maxDistance - min(borderDists))/self.maxDistance)**5 * foodCapture
 
@@ -405,7 +405,7 @@ class AttackerAgent(BaseStrategyAgent):
 
             # SELECTION
             while node.untriedActions == [] and node.children:
-                node = node.uct_select_child()
+                node = node.uctSelectChild()
                 state = state.generateSuccessor(self.index, node.action)
                 depthCounter +=1
 
@@ -431,8 +431,8 @@ class AttackerAgent(BaseStrategyAgent):
             # SIMULATION
             totalReward = 0
             depth = 0
-            last_position = state.getAgentState(self.index).getPosition()
-            visited_positions = set(last_position)
+            lastPosition = state.getAgentState(self.index).getPosition()
+            visitedPositions = set(lastPosition)
             while depth < maxDepth:
                 legalActions = self.getLegalMoves(state)
                 if not legalActions:
@@ -453,7 +453,7 @@ class AttackerAgent(BaseStrategyAgent):
                 totalReward += reward
 
                 # Penalty for Visiting the same Position
-                if newPosition in visited_positions:
+                if newPosition in visitedPositions:
                     totalReward -= (self.discountRate)**depth * 1  # You can tune this penalty
 
                 ''' Check if End condition has reached '''
@@ -516,14 +516,14 @@ class DefenderAgent(BaseStrategyAgent):
         criticalDefensePoints = self.getFoodYouAreDefending(gameState).asList() + self.getCapsulesYouAreDefending(gameState)
         minDefenseDistance = 999999
         patrolPositions = []
-        for each_point in criticalDefensePoints:
-            for each_patrol in self.patrolPositions:
-                distance = self.getMazeDistance(each_point, each_patrol)
+        for eachPoint in criticalDefensePoints:
+            for eachPatrol in self.patrolPositions:
+                distance = self.getMazeDistance(eachPoint, eachPatrol)
                 if minDefenseDistance > distance:
                     minDefenseDistance = distance
-                    patrolPositions = [each_patrol]
+                    patrolPositions = [eachPatrol]
                 elif minDefenseDistance == distance:
-                    patrolPositions.append(each_patrol)
+                    patrolPositions.append(eachPatrol)
         return patrolPositions
 
     def chooseAction(self, gameState):
@@ -643,7 +643,7 @@ class DefenderAgent(BaseStrategyAgent):
 
             # SELECTION
             while node.untriedActions == [] and node.children:
-                node = node.uct_select_child()
+                node = node.uctSelectChild()
                 state = state.generateSuccessor(self.index, node.action)
                 depthCounter +=1
 
@@ -671,8 +671,8 @@ class DefenderAgent(BaseStrategyAgent):
             # SIMULATION
             totalReward = 0
             depth = 0
-            last_position = state.getAgentState(self.index).getPosition()
-            visited_positions = set(last_position)
+            lastPosition = state.getAgentState(self.index).getPosition()
+            visitedPositions = set(lastPosition)
             while depth < maxDepth:
                 legalActions = self.getLegalMoves(state)
                 if not legalActions:
@@ -691,7 +691,7 @@ class DefenderAgent(BaseStrategyAgent):
                 totalReward += reward
 
                 # Penalty for Visiting the same Position
-                if not self.chase and newPosition in visited_positions:
+                if not self.chase and newPosition in visitedPositions:
                     totalReward -=  (self.discountRate)**depth * 1  # You can tune this penalty
 
                 ''' Check if End condition has reached '''
