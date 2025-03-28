@@ -616,7 +616,7 @@ class Game:
 
         while not self.gameOver:
             # Fetch the next agent
-            time.sleep(0.1)
+            time.sleep(0.01)
             agent = self.agents[agentIndex]
             move_time = 0
             skip_action = False
