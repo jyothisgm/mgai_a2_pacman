@@ -407,7 +407,7 @@ class AttackerAgent(BaseStrategyAgent):
             while node.untriedActions == [] and node.children:
                 node = node.uctSelectChild()
                 state = state.generateSuccessor(self.index, node.action)
-                depthCounter +=1
+                depthCounter += 1
 
             # EXPANSION
             if node.untriedActions:
@@ -441,12 +441,11 @@ class AttackerAgent(BaseStrategyAgent):
                     action = random.choice(legalActions)
                 else:
                     action = max(legalActions, key=lambda a: self.evaluate(state, a))
-                action = random.choice(legalActions)
                 state = state.generateSuccessor(self.index, action)
                 # state = self.updateGhostsTowardPacman(state)
                 newPosition = state.getAgentState(self.index).getPosition()
                 depth += 1
-                depthCounter +=1
+                depthCounter += 1
 
                 # Get reward for new state
                 reward = (self.discountRate)**depth * self.evaluate(state, Directions.STOP)
@@ -645,7 +644,7 @@ class DefenderAgent(BaseStrategyAgent):
             while node.untriedActions == [] and node.children:
                 node = node.uctSelectChild()
                 state = state.generateSuccessor(self.index, node.action)
-                depthCounter +=1
+                depthCounter += 1
 
             # EXPANSION
             if node.untriedActions:
@@ -683,7 +682,7 @@ class DefenderAgent(BaseStrategyAgent):
                     action = max(legalActions, key=lambda a: self.evaluate(state, a))
                 state = state.generateSuccessor(self.index, action)
                 newPosition = state.getAgentState(self.index).getPosition()
-                depthCounter +=1
+                depthCounter += 1
                 depth += 1
 
                 # Get reward for new state
