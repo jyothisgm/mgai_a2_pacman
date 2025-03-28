@@ -385,6 +385,8 @@ class AttackerAgent(BaseStrategyAgent):
                 self.aggressiveMode = True
             if self.stuckCounter % 5 == 0:
                 self.discardedFoodPosition.append(allFood[foodDist.index(min(foodDist))])
+                if len(self.discardedFoodPosition) == self.foodRemaining:
+                    self.discardedFoodPosition = []
 
         # Run MCTS instead of plain simulation
         bestMove = self.runMCTS(gameState, numSimulations=self.numberOfSimulations, maxDepth=self.mcDepth)
