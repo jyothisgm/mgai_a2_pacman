@@ -8,8 +8,8 @@ EXPLORE_RATE = math.sqrt(2.0)
 NUM_SIM = 10000
 REWARD_DISCOUNT = 0.8
 DEPTH = 10
-MAX_TIME = 0.7 # 70ms
-EPSILON = 0.02
+MAX_TIME = 0.5 # 50ms
+EPSILON = 0.00
 
 #####################
 ## Team Pac-Champs ##
@@ -414,19 +414,10 @@ class AttackerAgent(BaseStrategyAgent):
                 action = random.choice(node.untriedActions)
                 node.untriedActions.remove(action)
                 nextState = state.generateSuccessor(self.index, action)
-                # state = self.updateGhostsTowardPacman(state)
-
-                # Check if the new state is the end condition
-                statePos = state.getAgentState(self.index).getPosition()
-                if (self.remainingPowerPellets > len(self.getCapsules(state)) or
-                        statePos in self.homeBase or
-                        self.getScore(state) - self.currentScore):
-                    node.untriedActions = []
-                else:
-                    childNode = MCTSNode(nextState, parent=node, action=action, agentIndex=self.index)
-                    node.children.append(childNode)
-                    node = childNode
-                    state = nextState
+                childNode = MCTSNode(nextState, parent=node, action=action, agentIndex=self.index)
+                node.children.append(childNode)
+                node = childNode
+                state = nextState
 
             # SIMULATION
             totalReward = 0
@@ -454,23 +445,6 @@ class AttackerAgent(BaseStrategyAgent):
                 # Penalty for Visiting the same Position
                 if newPosition in visitedPositions:
                     totalReward -= (self.discountRate)**depth * 1  # You can tune this penalty
-
-                ''' Check if End condition has reached '''
-                # Capsule captured
-                if self.remainingPowerPellets > len(self.getCapsules(state)):
-                    totalReward += 20 * (self.discountRate)**(depth)
-                    break
-
-                # Score increased
-                if self.getScore(state) - self.currentScore:
-                    totalReward += 10 * (self.discountRate)**(depth) * (self.getScore(state) - self.currentScore)
-                    break
-
-                # Reset to home base
-                if newPosition in self.homeBase or (rootIsPacman and self.canBeCapturedInNSteps(state, depthCounter+1)):
-                    totalReward -= 55 * (self.discountRate)**(depth)
-                    break
-
             totalReward = totalReward / max(depth, 1)
 
             # BACKPROPAGATION
@@ -651,21 +625,10 @@ class DefenderAgent(BaseStrategyAgent):
                 action = random.choice(node.untriedActions)
                 node.untriedActions.remove(action)
                 nextState = state.generateSuccessor(self.index, action)
-
-                # Check if the new state is the end condition
-                statePos = state.getAgentState(self.index).getPosition()
-                capsuleAttackDist = [self.getMazeDistance(statePos, a) for a in self.getCapsules(state)]
-                intruders, _ = self.getIntruders(state)
-                if (self.remainingPowerPellets > len(capsuleAttackDist) or 
-                        statePos in self.homeBase or 
-                        (self.targets and statePos in self.targets) or 
-                        len(rootIntruder) > len(intruders)):
-                    node.untriedActions = []
-                else:
-                    childNode = MCTSNode(nextState, parent=node, action=action, agentIndex=self.index)
-                    node.children.append(childNode)
-                    node = childNode
-                    state = nextState
+                childNode = MCTSNode(nextState, parent=node, action=action, agentIndex=self.index)
+                node.children.append(childNode)
+                node = childNode
+                state = nextState
 
             # SIMULATION
             totalReward = 0
@@ -692,35 +655,6 @@ class DefenderAgent(BaseStrategyAgent):
                 # Penalty for Visiting the same Position
                 if not self.chase and newPosition in visitedPositions:
                     totalReward -=  (self.discountRate)**depth * 1  # You can tune this penalty
-
-                ''' Check if End condition has reached '''
-                capsuleAttackDist = [self.getMazeDistance(newPosition, a) for a in self.getCapsules(state)]
-                # Capsule captured
-                if self.remainingPowerPellets > len(capsuleAttackDist):
-                    totalReward += 20 * (self.discountRate)**(depth)
-                    break
-                
-                # Score increased
-                if self.getScore(state) - self.currentScore:
-                    totalReward += 40 * (self.discountRate)**(depth) * (self.getScore(state) - self.currentScore)
-                    break
-                
-                # Reset to home base
-                if newPosition in self.homeBase or (rootIsPacman and self.canBeCapturedInNSteps(state, depthCounter+1)):
-                    totalReward -= 30 * (self.discountRate)**(depth)
-                    break
-                
-                # Reached a target
-                if self.targets and newPosition in self.targets:
-                    totalReward += 40 * (self.discountRate)**(depth)
-                    break
-                
-                # Intruder Killed
-                intruders, _ = self.getIntruders(state)
-                if len(rootIntruder) > len(intruders):
-                    totalReward += 40 * (self.discountRate)**(depth)
-                    break
-
             totalReward = totalReward / max(depth, 1)
 
             # Backpropagation with Discount

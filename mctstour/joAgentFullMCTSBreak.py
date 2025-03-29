@@ -8,7 +8,7 @@ EXPLORE_RATE = math.sqrt(2.0)
 NUM_SIM = 10000
 REWARD_DISCOUNT = 0.8
 DEPTH = 10
-MAX_TIME = 0.7 # 70ms
+MAX_TIME = 0.5 # 50ms
 EPSILON = 0.02
 
 #####################
