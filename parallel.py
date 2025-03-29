@@ -64,15 +64,20 @@ if __name__ == "__main__":
     if len(agents) < 2:
         raise ValueError("Need at least 2 agents in the heutour folder.")
 
+    match_comb = list(combinations(agents, 2))
+    print("Match Combination:\n", match_comb)
     match_args = []
     match_id = 1
-    for a1, a2 in combinations(agents, 2):
-        for i in range(MATCHES_PER_PAIR // 2):
-            match_args.append((match_id, a1, a2, f"RANDOM{i}"))  # a1 red, a2 blue
+    for i in range(MATCHES_PER_PAIR // 2):
+        matches = []
+        for a1, a2 in match_comb:
+            matches.append((match_id, a1, a2, f"RANDOM{i}"))  # a1 red, a2 blue
             match_id += 1
-            match_args.append((match_id, a2, a1, f"RANDOM{i}"))  # a2 red, a1 blue
+            matches.append((match_id, a2, a1, f"RANDOM{i}"))  # a2 red, a1 blue
             match_id += 1
-    random.shuffle(match_args)
+        random.shuffle(matches)
+        match_args += matches
+    print("Total Matches: ", len(match_args))
     if os.path.exists(OUTPUT_CSV):
         os.remove(OUTPUT_CSV)
 

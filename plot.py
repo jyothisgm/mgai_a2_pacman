@@ -72,3 +72,7 @@ print(head_to_head_df)
 print(final_elo_df)
 
 # %%
+head_to_head_df
+#%%
+final_elo_df
+# %%
