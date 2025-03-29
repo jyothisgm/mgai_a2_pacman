@@ -4,11 +4,11 @@ from game import Directions
 from util import nearestPoint
 import math
 
-EXPLORE_RATE = math.sqrt(2.0)
+EXPLORE_RATE = 0.8
 NUM_SIM = 10000
-REWARD_DISCOUNT = 0.8
-DEPTH = 10
-MAX_TIME = 0.5 # 50ms
+REWARD_DISCOUNT = 0.9
+DEPTH = 15
+MAX_TIME = 0.7 # 70ms
 EPSILON = 0.3
 
 #####################

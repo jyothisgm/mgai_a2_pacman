@@ -7,9 +7,9 @@ import math
 EXPLORE_RATE = math.sqrt(2.0)
 NUM_SIM = 10000
 REWARD_DISCOUNT = 0.8
-DEPTH = 10
-MAX_TIME = 0.5 # 50ms
-EPSILON = 0.02
+DEPTH = 15
+MAX_TIME = 0.7 # 70ms
+EPSILON = 1  # Fully Random
 
 #####################
 ## Team Pac-Champs ##
