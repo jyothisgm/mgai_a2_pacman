@@ -106,11 +106,11 @@ def main():
     # Setup argument parser
     parser = argparse.ArgumentParser(description="Run Pacman agent tournament")
     parser.add_argument(
-        "--folder", type=str, default="tournament",
+        "--folder", type=str, default="hyperparameter_test_files",
         help="Folder containing agent files"
     )
     parser.add_argument(
-        "--games", type=int, default=10,
+        "--games", type=int, default=5,
         help="Number of games per match"
     )
     args = parser.parse_args()
@@ -119,8 +119,8 @@ def main():
     base_dir = os.path.dirname(__file__)
     agents_dir = os.path.join(base_dir, args.folder)
 
-    leaderboard_file = "elo_leaderboard.csv"
-    match_history_file = "elo_match_history.csv"
+    leaderboard_file = "elo_leaderboard_depth.csv"
+    match_history_file = "elo_match_history_depth.csv"
     # Run tournament
     get_agent_files(agents_dir, leaderboard_file, match_history_file, args.games)
 
