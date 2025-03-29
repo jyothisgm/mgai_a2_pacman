@@ -9,7 +9,7 @@ NUM_SIM = 10000
 REWARD_DISCOUNT = 0.8
 DEPTH = 10
 MAX_TIME = 0.5 # 50ms
-EPSILON = 0.00
+EPSILON = 0.00 # Epsilon is 0 for choosing only best actions in rollout
 
 #####################
 ## Team Pac-Champs ##
@@ -445,6 +445,20 @@ class AttackerAgent(BaseStrategyAgent):
                 # Penalty for Visiting the same Position
                 if newPosition in visitedPositions:
                     totalReward -= (self.discountRate)**depth * 1  # You can tune this penalty
+
+                ''' Check Penalties and Bonuses '''
+                # Capsule captured
+                if self.remainingPowerPellets > len(self.getCapsules(state)):
+                    totalReward += 20 * (self.discountRate)**(depth)
+
+                # Score increased
+                if self.getScore(state) - self.currentScore:
+                    totalReward += 10 * (self.discountRate)**(depth) * (self.getScore(state) - self.currentScore)
+
+                # Reset to home base
+                if newPosition in self.homeBase or (rootIsPacman and self.canBeCapturedInNSteps(state, depthCounter+1)):
+                    totalReward -= 55 * (self.discountRate)**(depth)
+
             totalReward = totalReward / max(depth, 1)
 
             # BACKPROPAGATION
@@ -655,6 +669,30 @@ class DefenderAgent(BaseStrategyAgent):
                 # Penalty for Visiting the same Position
                 if not self.chase and newPosition in visitedPositions:
                     totalReward -=  (self.discountRate)**depth * 1  # You can tune this penalty
+
+                ''' Check for Bonus and Penalties '''
+                capsuleAttackDist = [self.getMazeDistance(newPosition, a) for a in self.getCapsules(state)]
+                # Capsule captured
+                if self.remainingPowerPellets > len(capsuleAttackDist):
+                    totalReward += 20 * (self.discountRate)**(depth)
+
+                # Score increased
+                if self.getScore(state) - self.currentScore:
+                    totalReward += 40 * (self.discountRate)**(depth) * (self.getScore(state) - self.currentScore)
+
+                # Reset to home base
+                if newPosition in self.homeBase or (rootIsPacman and self.canBeCapturedInNSteps(state, depthCounter+1)):
+                    totalReward -= 30 * (self.discountRate)**(depth)
+
+                # Reached a target
+                if self.targets and newPosition in self.targets:
+                    totalReward += 40 * (self.discountRate)**(depth)
+
+                # Intruder Killed
+                intruders, _ = self.getIntruders(state)
+                if len(rootIntruder) > len(intruders):
+                    totalReward += 40 * (self.discountRate)**(depth)
+
             totalReward = totalReward / max(depth, 1)
 
             # Backpropagation with Discount

@@ -9,7 +9,7 @@ NUM_SIM = 10000
 REWARD_DISCOUNT = 0.8
 DEPTH = 10
 MAX_TIME = 0.5 # 50ms
-EPSILON = 0.02
+EPSILON = 0.3
 
 #####################
 ## Team Pac-Champs ##
@@ -55,14 +55,14 @@ class MCTSNode:
 
 
     def raveSelectChild(self):
-        C = EXPLORE_RATE  
+        C = EXPLORE_RATE
 
         def raveUctScore(child):
-            n_rave = child.N_RAVE.get(child.action, 0) + 1  
+            n_rave = child.N_RAVE.get(child.action, 0) + 1
             raveWeight = math.sqrt(self.k / (3 * n_rave + self.k))
             raveValue = raveWeight * (child.Q_RAVE.get(child.action, 0) / (n_rave + 1e-4))
 
-            visits = child.visits + 1e-4  
+            visits = child.visits + 1e-4
             traditionalValue = (1 - raveWeight) * (child.value / visits)
 
             exploration = C * math.sqrt(math.log(self.visits + 1) / visits)
@@ -70,7 +70,7 @@ class MCTSNode:
             return traditionalValue + exploration + raveValue
 
         return max(self.children, key=raveUctScore)
-    
+
     def updateRAVE(self, action, reward):
         if action not in self.Q_RAVE:
             self.Q_RAVE[action] = 0
@@ -721,22 +721,22 @@ class DefenderAgent(BaseStrategyAgent):
                 if self.remainingPowerPellets > len(capsuleAttackDist):
                     totalReward += 20 * (self.discountRate)**(depth)
                     break
-                
+
                 # Score increased
                 if self.getScore(state) - self.currentScore:
                     totalReward += 40 * (self.discountRate)**(depth) * (self.getScore(state) - self.currentScore)
                     break
-                
+
                 # Reset to home base
                 if newPosition in self.homeBase or (rootIsPacman and self.canBeCapturedInNSteps(state, depthCounter+1)):
                     totalReward -= 30 * (self.discountRate)**(depth)
                     break
-                
+
                 # Reached a target
                 if self.targets and newPosition in self.targets:
                     totalReward += 40 * (self.discountRate)**(depth)
                     break
-                
+
                 # Intruder Killed
                 intruders, _ = self.getIntruders(state)
                 if len(rootIntruder) > len(intruders):

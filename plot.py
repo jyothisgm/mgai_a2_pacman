@@ -3,9 +3,14 @@
 import pandas as pd
 from collections import defaultdict
 import ast
+import glob
 
-# Load and parse the CSV
-df = pd.read_csv("match_results.csv")
+# Load and concatenate all matching CSV files
+all_files = glob.glob("match_results_test_*.csv")
+df_list = [pd.read_csv(f) for f in all_files]
+df = pd.concat(df_list, ignore_index=True)
+
+# Parse 'score' column from string to list
 df['score'] = df['score'].apply(ast.literal_eval)
 
 # Sort by match_number
@@ -67,12 +72,12 @@ for agent1 in agents:
 
 head_to_head_df = pd.DataFrame(records)
 
+# Display results
 print(head_to_head_df)
-
 print(final_elo_df)
 
 # %%
 head_to_head_df
 #%%
 final_elo_df
-# %%
+#%%

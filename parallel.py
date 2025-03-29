@@ -6,11 +6,12 @@ import traceback
 from itertools import combinations
 from capture import readCommand, runGames
 
-AGENT_FOLDER = "heutour"
-MATCHES_PER_PAIR = 500
+AGENT_FOLDER = "mctstour"
+MATCHES_PER_PAIR = 100
 MAX_PARALLEL = 20
-OUTPUT_CSV = "match_results.csv"
+OUTPUT_CSV = os.path.join(AGENT_FOLDER, "match_results.csv")
 LAYOUT = "default"
+START_COUNT = 1
 
 csv_lock = multiprocessing.Lock()
 
@@ -62,7 +63,7 @@ def write_row_to_csv(row):
 if __name__ == "__main__":
     agents = list_agents()
     if len(agents) < 2:
-        raise ValueError("Need at least 2 agents in the heutour folder.")
+        raise ValueError("Need at least 2 agents in the folder.")
 
     match_comb = list(combinations(agents, 2))
     print("Match Combination:\n", match_comb)
@@ -75,7 +76,7 @@ if __name__ == "__main__":
             matches.append((a2, a1, f"RANDOM{i}"))  # a2 red, a1 blue
         random.shuffle(matches)
         match_args += matches
-    match_args = [(match_id + 1, red, blue, layout) for match_id, (red, blue, layout) in enumerate(match_args)]
+    match_args = [(match_id + START_COUNT, red, blue, layout) for match_id, (red, blue, layout) in enumerate(match_args)]
     print("Total Matches: ", len(match_args))
     if os.path.exists(OUTPUT_CSV):
         os.remove(OUTPUT_CSV)

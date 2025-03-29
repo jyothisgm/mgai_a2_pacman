@@ -699,22 +699,22 @@ class DefenderAgent(BaseStrategyAgent):
                 if self.remainingPowerPellets > len(capsuleAttackDist):
                     totalReward += 20 * (self.discountRate)**(depth)
                     break
-                
+
                 # Score increased
                 if self.getScore(state) - self.currentScore:
                     totalReward += 40 * (self.discountRate)**(depth) * (self.getScore(state) - self.currentScore)
                     break
-                
+
                 # Reset to home base
                 if newPosition in self.homeBase or (rootIsPacman and self.canBeCapturedInNSteps(state, depthCounter+1)):
                     totalReward -= 30 * (self.discountRate)**(depth)
                     break
-                
+
                 # Reached a target
                 if self.targets and newPosition in self.targets:
                     totalReward += 40 * (self.discountRate)**(depth)
                     break
-                
+
                 # Intruder Killed
                 intruders, _ = self.getIntruders(state)
                 if len(rootIntruder) > len(intruders):
