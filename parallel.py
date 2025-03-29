@@ -67,16 +67,15 @@ if __name__ == "__main__":
     match_comb = list(combinations(agents, 2))
     print("Match Combination:\n", match_comb)
     match_args = []
-    match_id = 1
+
     for i in range(MATCHES_PER_PAIR // 2):
         matches = []
         for a1, a2 in match_comb:
-            matches.append((match_id, a1, a2, f"RANDOM{i}"))  # a1 red, a2 blue
-            match_id += 1
-            matches.append((match_id, a2, a1, f"RANDOM{i}"))  # a2 red, a1 blue
-            match_id += 1
+            matches.append((a1, a2, f"RANDOM{i}"))  # a1 red, a2 blue
+            matches.append((a2, a1, f"RANDOM{i}"))  # a2 red, a1 blue
         random.shuffle(matches)
         match_args += matches
+    match_args = [(match_id + 1, red, blue, layout) for match_id, (red, blue, layout) in enumerate(match_args)]
     print("Total Matches: ", len(match_args))
     if os.path.exists(OUTPUT_CSV):
         os.remove(OUTPUT_CSV)
