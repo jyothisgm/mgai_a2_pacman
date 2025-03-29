@@ -8,7 +8,7 @@ EXPLORE_RATE = math.sqrt(2.0)
 NUM_SIM = 10000
 REWARD_DISCOUNT = 0.8
 DEPTH = 10
-MAX_TIME = 0.7 # 70ms
+MAX_TIME = 0.5 # 50ms
 EPSILON = 0.02
 
 #####################
@@ -44,21 +44,40 @@ class MCTSNode:
         self.agentIndex = agentIndex
         self.untriedActions = self.getLegalMoves(gameState)
         self.action = action
-
+        self.Q_RAVE = {} 
+        self.N_RAVE = {}
+        self.k = 10
     def getLegalMoves(self, gameState):
         # Get a random legal move, avoiding STOP and preferably not reversing
         legalMoves = gameState.getLegalActions(self.agentIndex)
         legalMoves.remove(Directions.STOP)  # Don't consider stopping\
         return legalMoves  # Choose randomly among remaining legal moves
 
-    def uctSelectChild(self):
-        C = EXPLORE_RATE  # Try tuning this based on reward scale
-        def uctScore(child):
-            averageValue = child.value / (child.visits + 1e-4)
-            exploration = C * math.sqrt(math.log(self.visits + 1) / (child.visits + 1e-4))
-            return averageValue + exploration
 
-        return max(self.children, key=uctScore)
+    def raveSelectChild(self):
+        C = EXPLORE_RATE  
+
+        def raveUctScore(child):
+            n_rave = child.N_RAVE.get(child.action, 0) + 1  
+            raveWeight = math.sqrt(self.k / (3 * n_rave + self.k))
+            raveValue = raveWeight * (child.Q_RAVE.get(child.action, 0) / (n_rave + 1e-4))
+
+            visits = child.visits + 1e-4  
+            traditionalValue = (1 - raveWeight) * (child.value / visits)
+
+            exploration = C * math.sqrt(math.log(self.visits + 1) / visits)
+
+            return traditionalValue + exploration + raveValue
+
+        return max(self.children, key=raveUctScore)
+    
+    def updateRAVE(self, action, reward):
+        if action not in self.Q_RAVE:
+            self.Q_RAVE[action] = 0
+            self.N_RAVE[action] = 0
+
+        self.Q_RAVE[action] += reward
+        self.N_RAVE[action] += 1
 
     def printTree(self, indent=0):
         indentStr = " " * indent
@@ -405,7 +424,7 @@ class AttackerAgent(BaseStrategyAgent):
 
             # SELECTION
             while node.untriedActions == [] and node.children:
-                node = node.uctSelectChild()
+                node = node.raveSelectChild() 
                 state = state.generateSuccessor(self.index, node.action)
                 depthCounter += 1
 
@@ -414,7 +433,6 @@ class AttackerAgent(BaseStrategyAgent):
                 action = random.choice(node.untriedActions)
                 node.untriedActions.remove(action)
                 nextState = state.generateSuccessor(self.index, action)
-                # state = self.updateGhostsTowardPacman(state)
 
                 # Check if the new state is the end condition
                 statePos = state.getAgentState(self.index).getPosition()
@@ -442,13 +460,13 @@ class AttackerAgent(BaseStrategyAgent):
                 else:
                     action = max(legalActions, key=lambda a: self.evaluate(state, a))
                 state = state.generateSuccessor(self.index, action)
-                # state = self.updateGhostsTowardPacman(state)
                 newPosition = state.getAgentState(self.index).getPosition()
                 depth += 1
                 depthCounter += 1
 
                 # Get reward for new state
                 reward = (self.discountRate)**depth * self.evaluate(state, Directions.STOP)
+                node.updateRAVE(action, reward)
                 totalReward += reward
 
                 # Penalty for Visiting the same Position
@@ -478,11 +496,14 @@ class AttackerAgent(BaseStrategyAgent):
             while node is not None:
                 node.visits += 1
                 node.value += (self.discountRate ** counter) * totalReward
+                if node.action is not None:
+                    node.updateRAVE(node.action, totalReward)
                 node = node.parent
                 counter += 1
             simulations += 1
         if rootNode.children:
-            bestChild = max(rootNode.children, key=lambda c: c.value/c.visits)
+            # Select the best child based on RAVE values
+            bestChild = max(rootNode.children, key=lambda c: c.Q_RAVE.get(c.action, 0) / (c.N_RAVE.get(c.action, 1) + 1e-4))
         else:
             return random.choice(rootState.getLegalActions(self.index))
         return bestChild.action
@@ -642,7 +663,7 @@ class DefenderAgent(BaseStrategyAgent):
 
             # SELECTION
             while node.untriedActions == [] and node.children:
-                node = node.uctSelectChild()
+                node = node.raveSelectChild()
                 state = state.generateSuccessor(self.index, node.action)
                 depthCounter += 1
 
@@ -687,6 +708,7 @@ class DefenderAgent(BaseStrategyAgent):
 
                 # Get reward for new state
                 reward = (self.discountRate)**depth * self.evaluate(state, Directions.STOP)
+                node.updateRAVE(action, reward)
                 totalReward += reward
 
                 # Penalty for Visiting the same Position
@@ -728,12 +750,14 @@ class DefenderAgent(BaseStrategyAgent):
             while node is not None:
                 node.visits += 1
                 node.value += (self.discountRate ** counter) * totalReward
+                node.updateRAVE(node.action, totalReward)  # 更新RAVE
                 node = node.parent
                 counter += 1
             simulations += 1
 
         if rootNode.children:
-            bestChild = max(rootNode.children, key=lambda c: c.value/c.visits)
+            # Select the best child based on RAVE values
+            bestChild = max(rootNode.children, key=lambda c: c.Q_RAVE.get(c.action, 0) / (c.N_RAVE.get(c.action, 1) + 1e-4))
         else:
             return random.choice(rootState.getLegalActions(self.index))
         return bestChild.action
