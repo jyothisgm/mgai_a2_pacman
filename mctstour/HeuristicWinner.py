@@ -23,7 +23,7 @@ from util import nearestPoint
 
 
 def createTeam(firstIndex, secondIndex, isRed,
-               first='OffensiveReflexAgent', second='DefenderAgent'):
+            first='OffensiveReflexAgent', second='DefenderAgent'):
     """
     This function should return a list of two agents that will form the
     team, initialized using firstIndex and secondIndex as their agent
@@ -103,6 +103,7 @@ class DummyAgent(CaptureAgent):
         return {'foods': 100, 'distanceToFood': -1, 'disToOpponent': 0}
 
 
+
 class OffensiveReflexAgent(DummyAgent):
     def __init__(self, index):
         super().__init__(index)
@@ -137,11 +138,11 @@ class OffensiveReflexAgent(DummyAgent):
 
         # Avoid reversing direction
         if action == Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]:
-            features['reverse'] = 10  
+            features['reverse'] = 10
 
         # Avoid stopping
         if action == Directions.STOP:
-            features['stop'] = 1  
+            features['stop'] = 1
 
         # Distance to the closest food
         if foodList:
@@ -154,12 +155,12 @@ class OffensiveReflexAgent(DummyAgent):
         # **Escape mode (avoid normal ghosts)**
         if minNormalGhostDist <= 3:
             self.escapeMode = True
-            self.lastEscapeDirection = action  
+            self.lastEscapeDirection = action
         elif minNormalGhostDist > 5:
-            self.escapeMode = False  
+            self.escapeMode = False
 
         if self.escapeMode and action == self.lastEscapeDirection:
-            features['avoidSameEscape'] = 30  
+            features['avoidSameEscape'] = 30
 
         # **Cycle detection (Avoid looping behavior)**
         self.recentPositions.append(pos)
@@ -170,19 +171,19 @@ class OffensiveReflexAgent(DummyAgent):
         if len(self.recentPositions) == 4:
             A, B, C, D = self.recentPositions
             if (A == C and B == D) or (A == D and B == C):
-                features['cyclePenalty'] = 100  
+                features['cyclePenalty'] = 100
 
         # **Detect 3-step loops (A → B → A)**
         if len(self.recentPositions) == 3:
             A, B, C = self.recentPositions
             if A == C:
-                features['shortCyclePenalty'] = 50  
+                features['shortCyclePenalty'] = 50
 
         # **Encourage exploration (Avoid visiting the same spot repeatedly)**
         if pos in self.visitedPositions:
-            features['explorePenalty'] = 30  
+            features['explorePenalty'] = 30
         else:
-            self.visitedPositions.add(pos)  
+            self.visitedPositions.add(pos)
 
         return features
 
@@ -207,7 +208,7 @@ class OffensiveReflexAgent(DummyAgent):
                 'cyclePenalty': -200,
                 'shortCyclePenalty': -100,
                 'explorePenalty': -50,
-                'avoidSameEscape': -50 
+                'avoidSameEscape': -50
             }
 
         if foodOfCarry >= max(3, len(foodList) // 2) and not isScared:
@@ -219,7 +220,7 @@ class OffensiveReflexAgent(DummyAgent):
                 'reverse': -10,
                 'stop': -150,
                 'distanceToCapsule': -30,
-                'cyclePenalty': -100,  
+                'cyclePenalty': -100,
                 'shortCyclePenalty': -50,
                 'explorePenalty': -40,
             }
@@ -267,39 +268,18 @@ class OffensiveReflexAgent(DummyAgent):
             'shortCyclePenalty': -50,
             'explorePenalty': -40,
         }
-    
-    
 
-class BaseStrategyAgent(CaptureAgent):
-    '''
-    Methods inherited from the baselineTeam.py
-    '''
-    def getSuccessor(self, gameState, action):
-        # Generate the successor state after taking an action
-        successor = gameState.generateSuccessor(self.index, action)
-        position = successor.getAgentState(self.index).getPosition()
-        # Check if we need another action to reach a precise position
-        if position != nearestPoint(position):
-            return successor.generateSuccessor(self.index, action)
-        else:
-            return successor
 
-    def evaluate(self, gameState, action): 
-        # Evaluate an action by calculating features and multiplying by weights
-        featureMap = self.calculateFeatures(gameState, action)
-        weightMap = self.getWeights(gameState, action)
-        return featureMap * weightMap
-
-    def calculateFeatures(self, gameState, action):
-        # Feature Extraction
-        featureMap = util.Counter()
-        successor = self.getSuccessor(gameState, action)
-        featureMap['scoreChange'] = self.getScore(successor)
-        return featureMap
-
-    def getWeights(self, gameState, action):
-        # Default weights
-        return {'scoreChange': 1.0}
+class DefenderAgent(CaptureAgent):
+    def __init__(self, index):
+        # Initialize defender agent
+        CaptureAgent.__init__(self, index)
+        self.targetPosition = None  # Current target position
+        self.previousFoodState = []  # Previous food state to track changes
+        self.patrolCounter = 0  # Counter for patrol behavior
+        self.attack = False
+        self.chase = False
+        self.foodTargetPosition = None
 
     def calculateBorderCrossingPoints(self, gameState):
         '''
@@ -320,16 +300,6 @@ class BaseStrategyAgent(CaptureAgent):
         for yCoord in range(1, mapDimensions[1] - 1):
             if not gameState.hasWall(mapDimensions[2], yCoord):
                 self.borderCrossingPoint.append((mapDimensions[2], yCoord))
-class DefenderAgent(BaseStrategyAgent):
-    def __init__(self, index):
-        # Initialize defender agent
-        CaptureAgent.__init__(self, index)
-        self.targetPosition = None  # Current target position
-        self.previousFoodState = []  # Previous food state to track changes
-        self.patrolCounter = 0  # Counter for patrol behavior
-        self.attack = False
-        self.chase = False
-        self.foodTargetPosition = None
 
     def registerInitialState(self, gameState):
         # Initialize game state data
@@ -349,7 +319,7 @@ class DefenderAgent(BaseStrategyAgent):
         for yCoord in range(1, gameState.data.layout.height - 1):
             if not gameState.hasWall(borderX, yCoord):
                 self.patrolPositions.append((borderX, yCoord))
-        
+
         # Focus on patrolling near the closest food point near border
         criticalDefensePoints = self.getFoodYouAreDefending(gameState).asList() + self.getCapsulesYouAreDefending(gameState)
         minDefenseDistance = 999999
@@ -362,15 +332,8 @@ class DefenderAgent(BaseStrategyAgent):
                     patrolPositions = [each_patrol]
                 elif minDefenseDistance == distance:
                     patrolPositions.append(each_patrol)
-        self.patrolPositions = patrolPositions
-
-        # Remove positions at the edges to focus on central patrol area
-        # for i in range(len(self.patrolPositions)):
-        #     if len(self.patrolPositions) > 2:
-        #         self.patrolPositions.remove(self.patrolPositions[0])
-        #         self.patrolPositions.remove(self.patrolPositions[-1])
-        #     else:
-        #         break
+        if len(patrolPositions):
+            self.patrolPositions = patrolPositions
 
     def getDefensiveMovementOptions(self, gameState):
         # Get valid defensive moves
@@ -406,21 +369,16 @@ class DefenderAgent(BaseStrategyAgent):
 
         return validMoves
 
- 
-    
     def chooseAction(self, gameState):
-       
         legal_actions = self.getDefensiveMovementOptions(gameState)
-        
-        action_scores = self.evaluateall_actions(gameState,legal_actions)
+
+        action_scores = self.evaluate(gameState,legal_actions)
         maxValue = max(action_scores.values())
         bestActions = [action for action, score in action_scores.items() if score == maxValue]
         return random.choice(bestActions)
 
-        
 
-    
-    def evaluateall_actions(self, gameState, legal_actions):
+    def evaluate(self, gameState, legal_actions):
         features_dict = self.getFeatures(gameState, legal_actions)
         weights = self.getWeights()
         action_scores = {}
@@ -429,17 +387,15 @@ class DefenderAgent(BaseStrategyAgent):
             score = sum(feature_values[f] * weights.get(f, 0) for f in feature_values)
             action_scores[action] = score
 
-        
         return action_scores
-    
+
     def getWeights(self):
         return {
         "invShortDefendFoodDist": 50,
         "scaredTimer": 100,
         "generalDefendFood": 60
-        
     }
-    
+
     def getFeatures(self, gameState, possibleMoves):
         # Main decision method for defender
         currentPosition = gameState.getAgentPosition(self.index)
@@ -450,12 +406,12 @@ class DefenderAgent(BaseStrategyAgent):
         closestIntruderPosition = []
         minimumDistance = 9999999
 
-        # Look for enemy intruders in our territory       
+        # Look for enemy intruders in our territory
         enemyIndices = self.getOpponents(gameState)
         enemyIdx = 0
         foodLocations = self.getFood(gameState).asList()
         attack = []
-        nearestFood = min([self.getMazeDistance(currentPosition, food) for food in foodLocations])
+        nearestFood = min([self.getMazeDistance(currentPosition, food) for food in foodLocations]) if foodLocations else 9999
         while enemyIdx != len(enemyIndices):
             enemyIndex = enemyIndices[enemyIdx]
             enemyAgent = gameState.getAgentState(enemyIndex)
@@ -463,6 +419,7 @@ class DefenderAgent(BaseStrategyAgent):
                 enemyPosition = enemyAgent.getPosition()
                 intruders.append(enemyPosition)
             else:
+                # Check if attack is possible
                 if enemyAgent.getPosition() and self.getMazeDistance(enemyAgent.getPosition(), currentPosition) > nearestFood * 2 + 2 or enemyAgent.scaredTimer > 5:
                     attack.append(True)
                 else:
@@ -480,39 +437,32 @@ class DefenderAgent(BaseStrategyAgent):
                     minimumDistance = distance
                     closestIntruderPosition.append(intruderPosition)
             self.targetPosition = closestIntruderPosition[-1]
-        # If food was eaten, target the eaten food position
+        # Attack if possible
         else:
             if not len(attack) or all(attack):
                 foodDistances = [self.getMazeDistance(currentPosition, food) for food in foodLocations]
-                self.targetPosition = foodLocations[foodDistances.index(min(foodDistances))]
-                self.attack = True
+                if foodDistances:
+                    self.targetPosition = foodLocations[foodDistances.index(min(foodDistances))]
+                    self.attack = True
             elif len(self.previousFoodState) > 0:
                 if len(self.getFoodYouAreDefending(gameState).asList()) < len(self.previousFoodState):
                     missingFood = set(self.previousFoodState) - set(self.getFoodYouAreDefending(gameState).asList())
                     self.targetPosition = missingFood.pop()
 
-
         # Update food state for next comparison
         self.previousFoodState = self.getFoodYouAreDefending(gameState).asList()
         self.determinePatrolPoints(gameState)
-        
-        # If no target, choose based on food/capsule count
+
+        # If no target, Patrol
         if self.targetPosition == None:
-            if len(self.getFoodYouAreDefending(gameState).asList()) <= 4:
-                # Few food left, protect remaining food and capsules
-                criticalDefensePoints = self.getFoodYouAreDefending(gameState).asList() + self.getCapsulesYouAreDefending(gameState)
-                self.targetPosition = random.choice(criticalDefensePoints)
-            else:
-                # Normal patrol behavior
-                self.targetPosition = random.choice(self.patrolPositions)
-        
+            self.targetPosition = random.choice(self.patrolPositions)
+
         # Get valid defensive moves
-        
         moveOptions = []
         distanceValues = []
 
         moveIdx = 0
-        #  distance to target from  each move     
+        #  distance to target from  each move
         while moveIdx < len(possibleMoves):
             currentMove = possibleMoves[moveIdx]
             nextState = gameState.generateSuccessor(self.index, currentMove)
@@ -522,9 +472,8 @@ class DefenderAgent(BaseStrategyAgent):
             moveIdx = moveIdx + 1
         # Choose move that minimizes distance to target
         shortestDistance = min(distanceValues)
-        
         feature_value_per_action = {}
-        
+
         for move, distance in zip(moveOptions, distanceValues):
             if gameState.getAgentState(self.index).scaredTimer > 1 and shortestDistance < 2:
                 if distance != shortestDistance:

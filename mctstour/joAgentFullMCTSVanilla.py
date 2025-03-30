@@ -4,9 +4,9 @@ from game import Directions
 from util import nearestPoint
 import math
 
-EXPLORE_RATE = math.sqrt(2.0)
+EXPLORE_RATE = 0.8
 NUM_SIM = 10000
-REWARD_DISCOUNT = 0.8
+REWARD_DISCOUNT = 0.9
 DEPTH = 15
 MAX_TIME = 0.7 # 70ms
 EPSILON = 1  # Fully Random
@@ -324,7 +324,8 @@ class AttackerAgent(BaseStrategyAgent):
         for eachBorder in borderDists:
             totalBorderDists += ((self.maxDistance - eachBorder)/self.maxDistance)**5
 
-        featureMap['scoreChange'] = ((self.maxDistance - min(borderDists))/self.maxDistance)**5 * foodCapture
+        if len(borderDists):
+            featureMap['scoreChange'] = ((self.maxDistance - min(borderDists))/self.maxDistance)**5 * foodCapture
 
         featureMap['capsuleCapture'] = 0
         if self.remainingPowerPellets > len(self.getCapsules(successor)):
@@ -384,8 +385,9 @@ class AttackerAgent(BaseStrategyAgent):
             if self.stuckCounter > 20:
                 self.aggressiveMode = True
             if self.stuckCounter % 5 == 0:
-                self.discardedFoodPosition.append(allFood[foodDist.index(min(foodDist))])
-                if len(self.discardedFoodPosition) == self.foodRemaining:
+                if len(foodDist):
+                    self.discardedFoodPosition.append(allFood[foodDist.index(min(foodDist))])
+                if len(self.discardedFoodPosition) >= self.foodRemaining:
                     self.discardedFoodPosition = []
 
         # Run MCTS instead of plain simulation
@@ -539,7 +541,7 @@ class DefenderAgent(BaseStrategyAgent):
         foodLocations = self.getFood(successor).asList()
         minFoodDist = [self.getMazeDistance(currentPosition, a) for a in foodLocations]
         capsuleDist = [self.getMazeDistance(currentPosition, a) for a in self.getCapsulesYouAreDefending(gameState)]
-        minBorderDist = min([self.getMazeDistance(currentPosition, a) for a in self.borderCrossingPoint])
+        minBorderDist = min([self.getMazeDistance(currentPosition, a) for a in self.borderCrossingPoint], default=0)
 
         # Penalty for Each Step
         featureMap['step'] = -1
@@ -577,7 +579,7 @@ class DefenderAgent(BaseStrategyAgent):
             if successor.getAgentState(self.index).isPacman:
                 featureMap['defend'] = 1 - ((self.maxDistance - minBorderDist) / self.maxDistance)**5
             else:
-                patrolDist = min([self.getMazeDistance(currentPosition, a) for a in self.patrolPositions])
+                patrolDist = min([self.getMazeDistance(currentPosition, a) for a in self.patrolPositions], default=0)
                 featureMap['defend'] = ((self.maxDistance - patrolDist) / self.maxDistance)**5
         return featureMap
 
