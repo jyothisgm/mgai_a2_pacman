@@ -461,28 +461,35 @@ class AttackerAgent(BaseStrategyAgent):
 
                 # Get reward for new state
                 reward = (self.discountRate)**depth * self.evaluate(state, Directions.STOP)
-                node.rewards.append(reward)
                 totalReward += reward
 
                 # Penalty for Visiting the same Position
                 if newPosition in visitedPositions:
                     totalReward -= (self.discountRate)**depth * 1  # You can tune this penalty
+                    reward -= (self.discountRate)**depth * 1
 
                 ''' Check if End condition has reached '''
                 # Capsule captured
                 if self.remainingPowerPellets > len(self.getCapsules(state)):
                     totalReward += 20 * (self.discountRate)**(depth)
+                    reward -= 20 * (self.discountRate)**(depth)
+                    node.rewards.append(reward)
                     break
 
                 # Score increased
                 if self.getScore(state) - self.currentScore:
                     totalReward += 10 * (self.discountRate)**(depth) * (self.getScore(state) - self.currentScore)
+                    reward -= 10 * (self.discountRate)**(depth) * (self.getScore(state) - self.currentScore)
+                    node.rewards.append(reward)
                     break
 
                 # Reset to home base
                 if newPosition in self.homeBase or (rootIsPacman and self.canBeCapturedInNSteps(state, depthCounter+1)):
                     totalReward -= 55 * (self.discountRate)**(depth)
+                    reward -= 55 * (self.discountRate)**(depth)
+                    node.rewards.append(reward)
                     break
+                node.rewards.append(reward)
 
             totalReward = totalReward / max(depth, 1)
 
@@ -700,40 +707,51 @@ class DefenderAgent(BaseStrategyAgent):
 
                 # Get reward for new state
                 reward = (self.discountRate)**depth * self.evaluate(state, Directions.STOP)
-                node.rewards.append(reward)
                 totalReward += reward
 
                 # Penalty for Visiting the same Position
                 if not self.chase and newPosition in visitedPositions:
-                    totalReward -=  (self.discountRate)**depth * 1  # You can tune this penalty
+                    totalReward -= (self.discountRate)**depth * 1  # You can tune this penalty
+                    reward -= (self.discountRate)**depth * 1
 
                 ''' Check if End condition has reached '''
                 capsuleAttackDist = [self.getMazeDistance(newPosition, a) for a in self.getCapsules(state)]
                 # Capsule captured
                 if self.remainingPowerPellets > len(capsuleAttackDist):
                     totalReward += 20 * (self.discountRate)**(depth)
+                    reward += 20 * (self.discountRate)**(depth)
+                    node.rewards.append(reward)
                     break
 
                 # Score increased
                 if self.getScore(state) - self.currentScore:
                     totalReward += 40 * (self.discountRate)**(depth) * (self.getScore(state) - self.currentScore)
+                    reward += 40 * (self.discountRate)**(depth) * (self.getScore(state) - self.currentScore)
+                    node.rewards.append(reward)
                     break
 
                 # Reset to home base
                 if newPosition in self.homeBase or (rootIsPacman and self.canBeCapturedInNSteps(state, depthCounter+1)):
                     totalReward -= 30 * (self.discountRate)**(depth)
+                    reward -= 30 * (self.discountRate)**(depth)
+                    node.rewards.append(reward)
                     break
 
                 # Reached a target
                 if self.targets and newPosition in self.targets:
                     totalReward += 40 * (self.discountRate)**(depth)
+                    reward += 40 * (self.discountRate)**(depth)
+                    node.rewards.append(reward)
                     break
 
                 # Intruder Killed
                 intruders, _ = self.getIntruders(state)
                 if len(rootIntruder) > len(intruders):
                     totalReward += 40 * (self.discountRate)**(depth)
+                    reward += 40 * (self.discountRate)**(depth)
+                    node.rewards.append(reward)
                     break
+                node.rewards.append(reward)
 
             totalReward = totalReward / max(depth, 1)
 
